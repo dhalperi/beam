@@ -621,6 +621,7 @@ public class ApiSurface {
         .pruningPrefix("com.google.bigtable.v1")
         .pruningPrefix("com.google.cloud.bigtable.config")
         .pruningPrefix("com.google.cloud.bigtable.grpc.Bigtable*Name")
+        .pruningPrefix("com.google.datastore.v1beta3")
         .pruningPrefix("com.google.protobuf")
         .pruningPrefix("org.joda.time")
         .pruningPrefix("org.apache.avro")
