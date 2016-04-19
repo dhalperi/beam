@@ -17,21 +17,22 @@
  */
 package org.apache.beam.sdk.io;
 
-import static com.google.api.services.datastore.DatastoreV1.PropertyFilter.Operator.EQUAL;
-import static com.google.api.services.datastore.DatastoreV1.PropertyOrder.Direction.DESCENDING;
-import static com.google.api.services.datastore.DatastoreV1.QueryResultBatch.MoreResultsType.NOT_FINISHED;
-import static com.google.api.services.datastore.client.DatastoreHelper.getPropertyMap;
-import static com.google.api.services.datastore.client.DatastoreHelper.makeFilter;
-import static com.google.api.services.datastore.client.DatastoreHelper.makeOrder;
-import static com.google.api.services.datastore.client.DatastoreHelper.makeValue;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Verify.verify;
+import static com.google.datastore.v1beta3.PropertyFilter.Operator.EQUAL;
+import static com.google.datastore.v1beta3.PropertyOrder.Direction.DESCENDING;
+import static com.google.datastore.v1beta3.QueryResultBatch.MoreResultsType.NOT_FINISHED;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeAndFilter;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeFilter;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeOrder;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeUpsert;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeValue;
 
 import org.apache.beam.sdk.annotations.Experimental;
 import org.apache.beam.sdk.coders.Coder;
-import org.apache.beam.sdk.coders.EntityCoder;
 import org.apache.beam.sdk.coders.SerializableCoder;
+import org.apache.beam.sdk.coders.protobuf.ProtoCoder;
 import org.apache.beam.sdk.io.Sink.WriteOperation;
 import org.apache.beam.sdk.io.Sink.Writer;
 import org.apache.beam.sdk.options.GcpOptions;
@@ -44,26 +45,27 @@ import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.util.BackOff;
 import com.google.api.client.util.BackOffUtils;
 import com.google.api.client.util.Sleeper;
-import com.google.api.services.datastore.DatastoreV1.CommitRequest;
-import com.google.api.services.datastore.DatastoreV1.Entity;
-import com.google.api.services.datastore.DatastoreV1.EntityResult;
-import com.google.api.services.datastore.DatastoreV1.Key;
-import com.google.api.services.datastore.DatastoreV1.Key.PathElement;
-import com.google.api.services.datastore.DatastoreV1.PartitionId;
-import com.google.api.services.datastore.DatastoreV1.Query;
-import com.google.api.services.datastore.DatastoreV1.QueryResultBatch;
-import com.google.api.services.datastore.DatastoreV1.RunQueryRequest;
-import com.google.api.services.datastore.DatastoreV1.RunQueryResponse;
-import com.google.api.services.datastore.client.Datastore;
-import com.google.api.services.datastore.client.DatastoreException;
-import com.google.api.services.datastore.client.DatastoreFactory;
-import com.google.api.services.datastore.client.DatastoreHelper;
-import com.google.api.services.datastore.client.DatastoreOptions;
-import com.google.api.services.datastore.client.QuerySplitter;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
+import com.google.datastore.v1beta3.CommitRequest;
+import com.google.datastore.v1beta3.Entity;
+import com.google.datastore.v1beta3.EntityResult;
+import com.google.datastore.v1beta3.Key;
+import com.google.datastore.v1beta3.Key.PathElement;
+import com.google.datastore.v1beta3.PartitionId;
+import com.google.datastore.v1beta3.Query;
+import com.google.datastore.v1beta3.QueryResultBatch;
+import com.google.datastore.v1beta3.RunQueryRequest;
+import com.google.datastore.v1beta3.RunQueryResponse;
+import com.google.datastore.v1beta3.client.Datastore;
+import com.google.datastore.v1beta3.client.DatastoreException;
+import com.google.datastore.v1beta3.client.DatastoreFactory;
+import com.google.datastore.v1beta3.client.DatastoreHelper;
+import com.google.datastore.v1beta3.client.DatastoreOptions;
+import com.google.datastore.v1beta3.client.QuerySplitter;
+import com.google.protobuf.Int32Value;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,8 +97,7 @@ import javax.annotation.Nullable;
  * <p>To read a {@link PCollection} from a query to Datastore, use {@link DatastoreIO#source} and
  * its methods {@link DatastoreIO.Source#withDataset} and {@link DatastoreIO.Source#withQuery} to
  * specify the dataset to query and the query to read from. You can optionally provide a namespace
- * to query within using {@link DatastoreIO.Source#withNamespace} or a Datastore host using
- * {@link DatastoreIO.Source#withHost}.
+ * to query within using {@link DatastoreIO.Source#withNamespace}.
  *
  * <p>For example:
  *
@@ -110,14 +111,13 @@ import javax.annotation.Nullable;
  * PCollection<Entity> entities = p.apply(
  *     Read.from(DatastoreIO.source()
  *         .withDataset(datasetId)
- *         .withQuery(query)
- *         .withHost(host)));
+ *         .withQuery(query)));
  * } </pre>
  *
  * <p>or:
  *
  * <pre> {@code
- * // Read a query from Datastore using the default namespace and host
+ * // Read a query from Datastore using the default namespace
  * PipelineOptions options = PipelineOptionsFactory.fromArgs(args).create();
  * Query query = ...;
  * String dataset = "...";
@@ -129,8 +129,8 @@ import javax.annotation.Nullable;
  *
  * <p><b>Note:</b> Normally, a Cloud Dataflow job will read from Cloud Datastore in parallel across
  * many workers. However, when the {@link Query} is configured with a limit using
- * {@link com.google.api.services.datastore.DatastoreV1.Query.Builder#setLimit(int)}, then
- * all returned results will be read by a single Dataflow worker in order to ensure correct data.
+ * {@link com.google.datastore.v1beta3.Query.Builder#setLimit}, then all returned results will be
+ * read by a single Dataflow worker in order to ensure correct data.
  *
  * <p>To write a {@link PCollection} to a Datastore, use {@link DatastoreIO#writeTo},
  * specifying the datastore to write to:
@@ -139,15 +139,6 @@ import javax.annotation.Nullable;
  * PCollection<Entity> entities = ...;
  * entities.apply(DatastoreIO.writeTo(dataset));
  * p.run();
- * } </pre>
- *
- * <p>To optionally change the host that is used to write to the Datastore, use {@link
- * DatastoreIO#sink} to build a {@link DatastoreIO.Sink} and write to it using the {@link Write}
- * transform:
- *
- * <pre> {@code
- * PCollection<Entity> entities = ...;
- * entities.apply(Write.to(DatastoreIO.sink().withDataset(dataset).withHost(host)));
  * } </pre>
  *
  * <p>{@link Entity Entities} in the {@code PCollection} to be written must have complete
@@ -176,8 +167,6 @@ import javax.annotation.Nullable;
  */
 @Experimental(Experimental.Kind.SOURCE_SINK)
 public class DatastoreIO {
-  public static final String DEFAULT_HOST = "https://www.googleapis.com";
-
   /**
    * Datastore has a limit of 500 mutations per batch operation, so we flush
    * changes to Datastore every 500 entities.
@@ -185,20 +174,7 @@ public class DatastoreIO {
   public static final int DATASTORE_BATCH_UPDATE_LIMIT = 500;
 
   /**
-   * Returns an empty {@link DatastoreIO.Source} builder with the default {@code host}.
-   * Configure the {@code dataset}, {@code query}, and {@code namespace} using
-   * {@link DatastoreIO.Source#withDataset}, {@link DatastoreIO.Source#withQuery},
-   * and {@link DatastoreIO.Source#withNamespace}.
-   *
-   * @deprecated the name and return type do not match. Use {@link #source()}.
-   */
-  @Deprecated
-  public static Source read() {
-    return source();
-  }
-
-  /**
-   * Returns an empty {@link DatastoreIO.Source} builder with the default {@code host}.
+   * Returns an empty {@link DatastoreIO.Source} builder.
    * Configure the {@code dataset}, {@code query}, and {@code namespace} using
    * {@link DatastoreIO.Source#withDataset}, {@link DatastoreIO.Source#withQuery},
    * and {@link DatastoreIO.Source#withNamespace}.
@@ -207,7 +183,7 @@ public class DatastoreIO {
    * {@code PTransform} that will read from Datastore.
    */
   public static Source source() {
-    return new Source(DEFAULT_HOST, null, null, null);
+    return new Source(null, null, null);
   }
 
   /**
@@ -215,29 +191,13 @@ public class DatastoreIO {
    * against the given dataset.
    */
   public static Read.Bounded<Entity> readFrom(String datasetId, Query query) {
-    return Read.from(new Source(DEFAULT_HOST, datasetId, query, null));
-  }
-
-  /**
-   * Returns a {@code PTransform} that reads Datastore entities from the query
-   * against the given dataset and host.
-   *
-   * @deprecated prefer {@link #source()} with {@link Source#withHost}, {@link Source#withDataset},
-   *    {@link Source#withQuery}s.
-   */
-  @Deprecated
-  public static Read.Bounded<Entity> readFrom(String host, String datasetId, Query query) {
-    return Read.from(new Source(host, datasetId, query, null));
+    return Read.from(new Source(datasetId, query, null));
   }
 
   /**
    * A {@link Source} that reads the result rows of a Datastore query as {@code Entity} objects.
    */
   public static class Source extends BoundedSource<Entity> {
-    public String getHost() {
-      return host;
-    }
-
     public String getDataset() {
       return datasetId;
     }
@@ -253,7 +213,7 @@ public class DatastoreIO {
 
     public Source withDataset(String datasetId) {
       checkNotNull(datasetId, "datasetId");
-      return new Source(host, datasetId, query, namespace);
+      return new Source(datasetId, query, namespace);
     }
 
     /**
@@ -263,28 +223,23 @@ public class DatastoreIO {
      *
      * <p><b>Note:</b> Normally, a Cloud Dataflow job will read from Cloud Datastore in parallel
      * across many workers. However, when the {@link Query} is configured with a limit using
-     * {@link com.google.api.services.datastore.DatastoreV1.Query.Builder#setLimit(int)}, then all
-     * returned results will be read by a single Dataflow worker in order to ensure correct data.
+     * {@link Query.Builder#setLimit}, then all returned results will be read by a single Dataflow
+     * worker in order to ensure correct data.
      */
     public Source withQuery(Query query) {
       checkNotNull(query, "query");
-      checkArgument(!query.hasLimit() || query.getLimit() > 0,
-          "Invalid query limit %s: must be positive", query.getLimit());
-      return new Source(host, datasetId, query, namespace);
-    }
-
-    public Source withHost(String host) {
-      checkNotNull(host, "host");
-      return new Source(host, datasetId, query, namespace);
+      checkArgument(!query.hasLimit() || query.getLimit().getValue() > 0,
+          "Invalid query limit %s: must be positive", query.getLimit().getValue());
+      return new Source(datasetId, query, namespace);
     }
 
     public Source withNamespace(@Nullable String namespace) {
-      return new Source(host, datasetId, query, namespace);
+      return new Source(datasetId, query, namespace);
     }
 
     @Override
     public Coder<Entity> getDefaultOutputCoder() {
-      return EntityCoder.of();
+      return ProtoCoder.of(Entity.class);
     }
 
     @Override
@@ -326,7 +281,7 @@ public class DatastoreIO {
 
       ImmutableList.Builder<Source> splits = ImmutableList.builder();
       for (Query splitQuery : datastoreSplits) {
-        splits.add(new Source(host, datasetId, splitQuery, namespace));
+        splits.add(new Source(datasetId, splitQuery, namespace));
       }
       return splits.build();
     }
@@ -338,9 +293,8 @@ public class DatastoreIO {
 
     @Override
     public void validate() {
-      Preconditions.checkNotNull(host, "host");
-      Preconditions.checkNotNull(query, "query");
-      Preconditions.checkNotNull(datasetId, "datasetId");
+      checkNotNull(query, "query");
+      checkNotNull(datasetId, "datasetId");
     }
 
     @Override
@@ -368,7 +322,7 @@ public class DatastoreIO {
       } else {
         query.addKindBuilder().setName("__Ns_Stat_Kind__");
       }
-      query.setFilter(makeFilter(
+      query.setFilter(makeAndFilter(
           makeFilter("kind_name", EQUAL, makeValue(ourKind)).build(),
           makeFilter("timestamp", EQUAL, makeValue(latestTimestamp)).build()));
       RunQueryRequest request = makeRequest(query.build());
@@ -378,18 +332,17 @@ public class DatastoreIO {
       LOG.info("Query for per-kind statistics took {}ms", System.currentTimeMillis() - now);
 
       QueryResultBatch batch = response.getBatch();
-      if (batch.getEntityResultCount() == 0) {
+      if (batch.getEntityResultsCount() == 0) {
         throw new NoSuchElementException(
             "Datastore statistics for kind " + ourKind + " unavailable");
       }
-      Entity entity = batch.getEntityResult(0).getEntity();
-      return getPropertyMap(entity).get("entity_bytes").getIntegerValue();
+      Entity entity = batch.getEntityResults(0).getEntity();
+      return entity.getProperties().get("entity_bytes").getIntegerValue();
     }
 
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(getClass())
-          .add("host", host)
           .add("dataset", datasetId)
           .add("query", query)
           .add("namespace", namespace)
@@ -399,7 +352,6 @@ public class DatastoreIO {
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     private static final Logger LOG = LoggerFactory.getLogger(Source.class);
-    private final String host;
     /** Not really nullable, but it may be {@code null} for in-progress {@code Source}s. */
     @Nullable
     private final String datasetId;
@@ -421,9 +373,8 @@ public class DatastoreIO {
      * an error will be thrown.
      */
     private Source(
-        String host, @Nullable String datasetId, @Nullable Query query,
+        @Nullable String datasetId, @Nullable Query query,
         @Nullable String namespace) {
-      this.host = checkNotNull(host, "host");
       this.datasetId = datasetId;
       this.query = query;
       this.namespace = namespace;
@@ -438,7 +389,7 @@ public class DatastoreIO {
       // If namespace is set, include it in the split request so splits are calculated accordingly.
       PartitionId.Builder partitionBuilder = PartitionId.newBuilder();
       if (namespace != null) {
-        partitionBuilder.setNamespace(namespace);
+        partitionBuilder.setNamespaceId(namespace);
       }
 
       if (mockSplitter != null) {
@@ -457,7 +408,7 @@ public class DatastoreIO {
     private RunQueryRequest makeRequest(Query query) {
       RunQueryRequest.Builder requestBuilder = RunQueryRequest.newBuilder().setQuery(query);
       if (namespace != null) {
-        requestBuilder.getPartitionIdBuilder().setNamespace(namespace);
+        requestBuilder.getPartitionIdBuilder().setNamespaceId(namespace);
       }
       return requestBuilder.build();
     }
@@ -470,7 +421,7 @@ public class DatastoreIO {
       Query.Builder query = Query.newBuilder();
       query.addKindBuilder().setName("__Stat_Total__");
       query.addOrder(makeOrder("timestamp", DESCENDING));
-      query.setLimit(1);
+      query.setLimit(Int32Value.newBuilder().setValue(1));
       RunQueryRequest request = makeRequest(query.build());
 
       long now = System.currentTimeMillis();
@@ -478,17 +429,17 @@ public class DatastoreIO {
       LOG.info("Query for latest stats timestamp of dataset {} took {}ms", datasetId,
           System.currentTimeMillis() - now);
       QueryResultBatch batch = response.getBatch();
-      if (batch.getEntityResultCount() == 0) {
+      if (batch.getEntityResultsCount() == 0) {
         throw new NoSuchElementException(
             "Datastore total statistics for dataset " + datasetId + " unavailable");
       }
-      Entity entity = batch.getEntityResult(0).getEntity();
-      return getPropertyMap(entity).get("timestamp").getTimestampMicrosecondsValue();
+      Entity entity = batch.getEntityResults(0).getEntity();
+      return entity.getProperties().get("timestamp").getTimestampValue().getNanos();
     }
 
     private Datastore getDatastore(PipelineOptions pipelineOptions) {
       DatastoreOptions.Builder builder =
-          new DatastoreOptions.Builder().host(host).dataset(datasetId).initializer(
+          new DatastoreOptions.Builder().projectId(datasetId).initializer(
               new RetryHttpRequestInitializer());
 
       Credential credential = pipelineOptions.as(GcpOptions.class).getGcpCredential();
@@ -500,7 +451,7 @@ public class DatastoreIO {
 
     /** For testing only. */
     Source withMockSplitter(QuerySplitter splitter) {
-      Source res = new Source(host, datasetId, query, namespace);
+      Source res = new Source(datasetId, query, namespace);
       res.mockSplitter = splitter;
       res.mockEstimateSizeBytes = mockEstimateSizeBytes;
       return res;
@@ -508,7 +459,7 @@ public class DatastoreIO {
 
     /** For testing only. */
     Source withMockEstimateSizeBytes(Long estimateSizeBytes) {
-      Source res = new Source(host, datasetId, query, namespace);
+      Source res = new Source(datasetId, query, namespace);
       res.mockSplitter = mockSplitter;
       res.mockEstimateSizeBytes = estimateSizeBytes;
       return res;
@@ -518,14 +469,14 @@ public class DatastoreIO {
   ///////////////////// Write Class /////////////////////////////////
 
   /**
-   * Returns a new {@link DatastoreIO.Sink} builder using the default host.
-   * You need to further configure it using {@link DatastoreIO.Sink#withDataset}, and optionally
-   * {@link DatastoreIO.Sink#withHost} before using it in a {@link Write} transform.
+   * Returns a new {@link DatastoreIO.Sink} builder.
+   * You need to further configure it using {@link DatastoreIO.Sink#withDataset}
+   * before using it in a {@link Write} transform.
    *
    * <p>For example: {@code p.apply(Write.to(DatastoreIO.sink().withDataset(dataset)));}
    */
   public static Sink sink() {
-    return new Sink(DEFAULT_HOST, null);
+    return new Sink(null);
   }
 
   /**
@@ -543,7 +494,6 @@ public class DatastoreIO {
    *
    */
   public static class Sink extends org.apache.beam.sdk.io.Sink<Entity> {
-    final String host;
     final String datasetId;
 
     /**
@@ -551,34 +501,19 @@ public class DatastoreIO {
      */
     public Sink withDataset(String datasetId) {
       checkNotNull(datasetId, "datasetId");
-      return new Sink(host, datasetId);
+      return new Sink(datasetId);
     }
 
     /**
-     * Returns a {@link Sink} that is like this one, but will use the given host.  If not specified,
-     * the {@link DatastoreIO#DEFAULT_HOST default host} will be used.
+     * Constructs a Sink that writes to the given dataset.
      */
-    public Sink withHost(String host) {
-      checkNotNull(host, "host");
-      return new Sink(host, datasetId);
-    }
-
-    /**
-     * Constructs a Sink with given host and dataset.
-     */
-    protected Sink(String host, String datasetId) {
-      this.host = checkNotNull(host, "host");
+    protected Sink(String datasetId) {
       this.datasetId = datasetId;
     }
 
-    /**
-     * Ensures the host and dataset are set.
-     */
     @Override
     public void validate(PipelineOptions options) {
-      Preconditions.checkNotNull(
-          host, "Host is a required parameter. Please use withHost to set the host.");
-      Preconditions.checkNotNull(
+      checkNotNull(
           datasetId,
           "Dataset ID is a required parameter. Please use withDataset to to set the datasetId.");
     }
@@ -627,8 +562,7 @@ public class DatastoreIO {
     public DatastoreWriter createWriter(PipelineOptions options) throws Exception {
       DatastoreOptions.Builder builder =
           new DatastoreOptions.Builder()
-              .host(sink.host)
-              .dataset(sink.datasetId)
+              .projectId(sink.datasetId)
               .initializer(new RetryHttpRequestInitializer());
       Credential credential = options.as(GcpOptions.class).getGcpCredential();
       if (credential != null) {
@@ -688,15 +622,16 @@ public class DatastoreIO {
      * has either an id or a name.
      */
     static boolean isValidKey(Key key) {
-      List<PathElement> elementList = key.getPathElementList();
+      List<PathElement> elementList = key.getPathList();
       if (elementList.isEmpty()) {
         return false;
       }
       PathElement lastElement = elementList.get(elementList.size() - 1);
-      return (lastElement.hasId() || lastElement.hasName());
+      return (lastElement.getId() != 0)             // has an id
+          || (!lastElement.getName().isEmpty());    // has a name
     }
 
-    // Visible for testing
+    @VisibleForTesting
     DatastoreWriter(DatastoreWriteOperation writeOp, Datastore datastore) {
       this.writeOp = writeOp;
       this.datastore = datastore;
@@ -761,7 +696,9 @@ public class DatastoreIO {
         // Batch upsert entities.
         try {
           CommitRequest.Builder commitRequest = CommitRequest.newBuilder();
-          commitRequest.getMutationBuilder().addAllUpsert(entities);
+          for (Entity entity : entities) {
+            commitRequest.addMutations(makeUpsert(entity));
+          }
           commitRequest.setMode(CommitRequest.Mode.NON_TRANSACTIONAL);
           datastore.commit(commitRequest.build());
 
@@ -848,7 +785,7 @@ public class DatastoreIO {
       this.source = source;
       this.datastore = datastore;
       // If the user set a limit on the query, remember it. Otherwise pin to MAX_VALUE.
-      userLimit = source.query.hasLimit() ? source.query.getLimit() : Integer.MAX_VALUE;
+      userLimit = source.query.hasLimit() ? source.query.getLimit().getValue() : Integer.MAX_VALUE;
     }
 
     @Override
@@ -909,8 +846,8 @@ public class DatastoreIO {
      */
     private Iterator<EntityResult> getIteratorAndMoveCursor() throws DatastoreException {
       Query.Builder query = source.query.toBuilder().clone();
-      query.setLimit(Math.min(userLimit, QUERY_BATCH_LIMIT));
-      if (currentBatch != null && currentBatch.hasEndCursor()) {
+      query.setLimit(Int32Value.newBuilder().setValue(Math.min(userLimit, QUERY_BATCH_LIMIT)));
+      if (currentBatch != null && !currentBatch.getEndCursor().isEmpty()) {
         query.setStartCursor(currentBatch.getEndCursor());
       }
 
@@ -922,7 +859,7 @@ public class DatastoreIO {
       // MORE_RESULTS_AFTER_LIMIT is not implemented yet:
       // https://groups.google.com/forum/#!topic/gcd-discuss/iNs6M1jA2Vw, so
       // use result count to determine if more results might exist.
-      int numFetch = currentBatch.getEntityResultCount();
+      int numFetch = currentBatch.getEntityResultsCount();
       if (source.query.hasLimit()) {
         verify(userLimit >= numFetch,
             "Expected userLimit %s >= numFetch %s, because query limit %s should be <= userLimit",
@@ -941,7 +878,7 @@ public class DatastoreIO {
         return null;
       }
 
-      return currentBatch.getEntityResultList().iterator();
+      return currentBatch.getEntityResultsList().iterator();
     }
   }
 }

@@ -20,13 +20,11 @@ package org.apache.beam.sdk.coders.protobuf;
 import static org.apache.beam.sdk.coders.protobuf.ProtobufUtil.checkProto2Syntax;
 import static org.apache.beam.sdk.coders.protobuf.ProtobufUtil.getRecursiveDescriptorsForClass;
 import static org.apache.beam.sdk.coders.protobuf.ProtobufUtil.verifyDeterministic;
-
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertThat;
 
 import org.apache.beam.sdk.coders.Coder.NonDeterministicException;
 
-import com.google.api.services.datastore.DatastoreV1.Entity;
 import com.google.cloud.dataflow.sdk.coders.Proto2CoderTestMessages;
 import com.google.cloud.dataflow.sdk.coders.Proto2CoderTestMessages.MessageA;
 import com.google.cloud.dataflow.sdk.coders.Proto2CoderTestMessages.MessageB;
@@ -35,6 +33,7 @@ import com.google.cloud.dataflow.sdk.coders.Proto2CoderTestMessages.MessageWithM
 import com.google.cloud.dataflow.sdk.coders.Proto2CoderTestMessages.ReferencesMessageWithMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.google.datastore.v1beta3.Entity;
 import com.google.protobuf.Any;
 import com.google.protobuf.Descriptors.GenericDescriptor;
 import com.google.protobuf.Duration;
@@ -152,8 +151,18 @@ public class ProtobufUtilTest {
   }
 
   @Test
-  public void testEntityIsDeterministic() throws NonDeterministicException {
-    // Cloud Datastore's Entities can be encoded deterministically.
+  public void testDurationIsDeterministic() throws NonDeterministicException {
+    // Proto's Duration type can be encoded deterministically.
+    verifyDeterministic(ProtoCoder.of(Duration.class));
+  }
+
+  @Test
+  public void testEntityIsNotDeterministic() throws NonDeterministicException {
+    // Cloud Datastore's v1beta3 Entities cannot be encoded deterministically as they have Map
+    // fields.
+    thrown.expect(NonDeterministicException.class);
+    thrown.expectMessage(Entity.class.getName());
+
     verifyDeterministic(ProtoCoder.of(Entity.class));
   }
 
