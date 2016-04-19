@@ -17,8 +17,8 @@
  */
 package org.apache.beam.sdk.io;
 
-import static com.google.api.services.datastore.client.DatastoreHelper.makeKey;
-
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeKey;
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeValue;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
@@ -44,21 +44,21 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.ExpectedLogs;
 import org.apache.beam.sdk.util.TestCredential;
 
-import com.google.api.services.datastore.DatastoreV1.Entity;
-import com.google.api.services.datastore.DatastoreV1.EntityResult;
-import com.google.api.services.datastore.DatastoreV1.Key;
-import com.google.api.services.datastore.DatastoreV1.KindExpression;
-import com.google.api.services.datastore.DatastoreV1.PartitionId;
-import com.google.api.services.datastore.DatastoreV1.PropertyFilter;
-import com.google.api.services.datastore.DatastoreV1.Query;
-import com.google.api.services.datastore.DatastoreV1.QueryResultBatch;
-import com.google.api.services.datastore.DatastoreV1.RunQueryRequest;
-import com.google.api.services.datastore.DatastoreV1.RunQueryResponse;
-import com.google.api.services.datastore.DatastoreV1.Value;
-import com.google.api.services.datastore.client.Datastore;
-import com.google.api.services.datastore.client.DatastoreHelper;
-import com.google.api.services.datastore.client.QuerySplitter;
 import com.google.common.collect.Lists;
+import com.google.datastore.v1beta3.Entity;
+import com.google.datastore.v1beta3.EntityResult;
+import com.google.datastore.v1beta3.Key;
+import com.google.datastore.v1beta3.KindExpression;
+import com.google.datastore.v1beta3.PartitionId;
+import com.google.datastore.v1beta3.PropertyFilter;
+import com.google.datastore.v1beta3.Query;
+import com.google.datastore.v1beta3.QueryResultBatch;
+import com.google.datastore.v1beta3.RunQueryRequest;
+import com.google.datastore.v1beta3.RunQueryResponse;
+import com.google.datastore.v1beta3.client.Datastore;
+import com.google.datastore.v1beta3.client.DatastoreHelper;
+import com.google.datastore.v1beta3.client.QuerySplitter;
+import com.google.protobuf.Int32Value;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -80,8 +80,7 @@ import java.util.NoSuchElementException;
  * Tests for {@link DatastoreIO}.
  */
 @RunWith(JUnit4.class)
-public class DatastoreIOTest {
-  private static final String HOST = "testHost";
+public final class DatastoreIOTest {
   private static final String DATASET = "testDataset";
   private static final String NAMESPACE = "testNamespace";
   private static final String KIND = "testKind";
@@ -105,13 +104,13 @@ public class DatastoreIOTest {
   public void setUp() {
     MockitoAnnotations.initMocks(this);
     initialSource = DatastoreIO.source()
-        .withHost(HOST).withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
+        .withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
   }
 
   /**
    * Helper function to create a test {@code DataflowPipelineOptions}.
    */
-  static final GcpOptions testPipelineOptions() {
+  static GcpOptions testPipelineOptions() {
     GcpOptions options = PipelineOptionsFactory.as(GcpOptions.class);
     options.setGcpCredential(new TestCredential());
     return options;
@@ -120,10 +119,9 @@ public class DatastoreIOTest {
   @Test
   public void testBuildSource() throws Exception {
     DatastoreIO.Source source = DatastoreIO.source()
-        .withHost(HOST).withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
+        .withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
     assertEquals(QUERY, source.getQuery());
     assertEquals(DATASET, source.getDataset());
-    assertEquals(HOST, source.getHost());
     assertEquals(NAMESPACE, source.getNamespace());
   }
 
@@ -133,20 +131,10 @@ public class DatastoreIOTest {
   @Test
   public void testBuildSourceAlt() throws Exception {
     DatastoreIO.Source source = DatastoreIO.source()
-        .withDataset(DATASET).withNamespace(NAMESPACE).withQuery(QUERY).withHost(HOST);
+        .withDataset(DATASET).withNamespace(NAMESPACE).withQuery(QUERY);
     assertEquals(QUERY, source.getQuery());
     assertEquals(DATASET, source.getDataset());
-    assertEquals(HOST, source.getHost());
     assertEquals(NAMESPACE, source.getNamespace());
-  }
-
-  @Test
-  public void testSourceValidationFailsHost() throws Exception {
-    thrown.expect(NullPointerException.class);
-    thrown.expectMessage("host");
-
-    DatastoreIO.Source source = initialSource.withHost(null);
-    source.validate();
   }
 
   @Test
@@ -167,7 +155,7 @@ public class DatastoreIOTest {
 
   @Test
   public void testSourceValidationFailsQueryLimitZero() throws Exception {
-    Query invalidLimit = Query.newBuilder().setLimit(0).build();
+    Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(0)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit 0");
 
@@ -176,7 +164,7 @@ public class DatastoreIOTest {
 
   @Test
   public void testSourceValidationFailsQueryLimitNegative() throws Exception {
-    Query invalidLimit = Query.newBuilder().setLimit(-5).build();
+    Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(-5)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit -5");
 
@@ -188,14 +176,6 @@ public class DatastoreIOTest {
     DatastoreIO.Source source = DatastoreIO.source().withDataset(DATASET).withQuery(QUERY);
     /* Should succeed, as a null namespace is fine. */
     source.validate();
-  }
-
-  @Test
-  public void testSinkDoesNotAllowNullHost() throws Exception {
-    thrown.expect(NullPointerException.class);
-    thrown.expectMessage("host");
-
-    DatastoreIO.sink().withDataset(DATASET).withHost(null);
   }
 
   @Test
@@ -234,7 +214,7 @@ public class DatastoreIOTest {
               .addKind(mykind)
               .setFilter(
                   DatastoreHelper.makeFilter("foo", PropertyFilter.Operator.EQUAL,
-                      Value.newBuilder().setIntegerValue(i).build()))
+                      makeValue(i)))
               .build());
     }
 
@@ -272,7 +252,7 @@ public class DatastoreIOTest {
 
     io.splitIntoBundles(1024, testPipelineOptions());
 
-    PartitionId partition = PartitionId.newBuilder().setNamespace(NAMESPACE).build();
+    PartitionId partition = PartitionId.newBuilder().setNamespaceId(NAMESPACE).build();
     verify(splitter).getSplits(eq(QUERY), eq(partition), eq(8), any(Datastore.class));
     verifyNoMoreInteractions(splitter);
   }
@@ -313,7 +293,7 @@ public class DatastoreIOTest {
   @Test
   public void testQueryDoesNotSplitWithLimitSet() throws Exception {
     // Minimal query with a limit
-    Query query = Query.newBuilder().setLimit(5).build();
+    Query query = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(5)).build();
 
     // Mock query splitter, should not be invoked.
     QuerySplitter splitter = mock(QuerySplitter.class);
@@ -397,30 +377,7 @@ public class DatastoreIOTest {
    */
   @Test
   public void testBuildSink() throws Exception {
-    DatastoreIO.Sink sink = DatastoreIO.sink().withDataset(DATASET).withHost(HOST);
-    assertEquals(HOST, sink.host);
-    assertEquals(DATASET, sink.datasetId);
-
-    sink = DatastoreIO.sink().withHost(HOST).withDataset(DATASET);
-    assertEquals(HOST, sink.host);
-    assertEquals(DATASET, sink.datasetId);
-
-    sink = DatastoreIO.sink().withDataset(DATASET).withHost(HOST);
-    assertEquals(HOST, sink.host);
-    assertEquals(DATASET, sink.datasetId);
-  }
-
-  /**
-   * Test building a sink using the default host.
-   */
-  @Test
-  public void testBuildSinkDefaults() throws Exception {
     DatastoreIO.Sink sink = DatastoreIO.sink().withDataset(DATASET);
-    assertEquals(DatastoreIO.DEFAULT_HOST, sink.host);
-    assertEquals(DATASET, sink.datasetId);
-
-    sink = DatastoreIO.sink().withDataset(DATASET);
-    assertEquals(DatastoreIO.DEFAULT_HOST, sink.host);
     assertEquals(DATASET, sink.datasetId);
   }
 
@@ -431,33 +388,33 @@ public class DatastoreIOTest {
   public void testHasNameOrId() {
     Key key;
     // Complete with name, no ancestor
-    key = DatastoreHelper.makeKey("bird", "finch").build();
+    key = makeKey("bird", "finch").build();
     assertTrue(DatastoreWriter.isValidKey(key));
 
     // Complete with id, no ancestor
-    key = DatastoreHelper.makeKey("bird", 123).build();
+    key = makeKey("bird", 123).build();
     assertTrue(DatastoreWriter.isValidKey(key));
 
     // Incomplete, no ancestor
-    key = DatastoreHelper.makeKey("bird").build();
+    key = makeKey("bird").build();
     assertFalse(DatastoreWriter.isValidKey(key));
 
     // Complete with name and ancestor
-    key = DatastoreHelper.makeKey("bird", "owl").build();
-    key = DatastoreHelper.makeKey(key, "bird", "horned").build();
+    key = makeKey("bird", "owl").build();
+    key = makeKey(key, "bird", "horned").build();
     assertTrue(DatastoreWriter.isValidKey(key));
 
     // Complete with id and ancestor
-    key = DatastoreHelper.makeKey("bird", "owl").build();
-    key = DatastoreHelper.makeKey(key, "bird", 123).build();
+    key = makeKey("bird", "owl").build();
+    key = makeKey(key, "bird", 123).build();
     assertTrue(DatastoreWriter.isValidKey(key));
 
     // Incomplete with ancestor
-    key = DatastoreHelper.makeKey("bird", "owl").build();
-    key = DatastoreHelper.makeKey(key, "bird").build();
+    key = makeKey("bird", "owl").build();
+    key = makeKey(key, "bird").build();
     assertFalse(DatastoreWriter.isValidKey(key));
 
-    key = DatastoreHelper.makeKey().build();
+    key = makeKey().build();
     assertFalse(DatastoreWriter.isValidKey(key));
   }
 
@@ -466,7 +423,7 @@ public class DatastoreIOTest {
    */
   @Test
   public void testAddEntitiesWithIncompleteKeys() throws Exception {
-    Key key = DatastoreHelper.makeKey("bird").build();
+    Key key = makeKey("bird").build();
     Entity entity = Entity.newBuilder().setKey(key).build();
     DatastoreWriter writer = new DatastoreIO.DatastoreWriter(null, mockDatastore);
 
@@ -482,9 +439,9 @@ public class DatastoreIOTest {
   @Test
   public void testAddingEntities() throws Exception {
     List<Entity> expected = Lists.newArrayList(
-        Entity.newBuilder().setKey(DatastoreHelper.makeKey("bird", "jay").build()).build(),
-        Entity.newBuilder().setKey(DatastoreHelper.makeKey("bird", "condor").build()).build(),
-        Entity.newBuilder().setKey(DatastoreHelper.makeKey("bird", "robin").build()).build());
+        Entity.newBuilder().setKey(makeKey("bird", "jay").build()).build(),
+        Entity.newBuilder().setKey(makeKey("bird", "condor").build()).build(),
+        Entity.newBuilder().setKey(makeKey("bird", "robin").build()).build());
 
     List<Entity> allEntities = Lists.newArrayList(expected);
     Collections.shuffle(allEntities);
@@ -512,7 +469,7 @@ public class DatastoreIOTest {
     assertTrue(q.hasLimit());
 
     // The limit should be in the range [1, DATASTORE_QUERY_BATCH_LIMIT]
-    int limit = q.getLimit();
+    int limit = q.getLimit().getValue();
     assertThat(limit, greaterThanOrEqualTo(1));
     assertThat(limit, lessThanOrEqualTo(DATASTORE_QUERY_BATCH_LIMIT));
 
@@ -528,7 +485,7 @@ public class DatastoreIOTest {
     // Fill out the other parameters on the returned result batch.
     RunQueryResponse.Builder ret = RunQueryResponse.newBuilder();
     ret.getBatchBuilder()
-        .addAllEntityResult(entities)
+        .addAllEntityResults(entities)
         .setEntityResultType(EntityResult.ResultType.FULL)
         .setMoreResults(
             limit == DATASTORE_QUERY_BATCH_LIMIT
@@ -541,7 +498,8 @@ public class DatastoreIOTest {
   /** Helper function to run a test reading from a limited-result query. */
   private void runQueryLimitReadTest(int numEntities) throws Exception {
     // An empty query to read entities.
-    Query query = Query.newBuilder().setLimit(numEntities).build();
+    Query query =
+        Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(numEntities)).build();
     DatastoreIO.Source source = DatastoreIO.source().withQuery(query).withDataset("mockDataset");
 
     // Use mockResponseForQuery to generate results.
