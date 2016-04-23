@@ -81,7 +81,7 @@ import java.util.NoSuchElementException;
  */
 @RunWith(JUnit4.class)
 public final class DatastoreIOTest {
-  private static final String DATASET = "testDataset";
+  private static final String PROJECT_ID = "testProject";
   private static final String NAMESPACE = "testNamespace";
   private static final String KIND = "testKind";
   private static final Query QUERY;
@@ -90,7 +90,7 @@ public final class DatastoreIOTest {
     q.addKindBuilder().setName(KIND);
     QUERY = q.build();
   }
-  private DatastoreIO.Source initialSource;
+  private DatastoreIO.Read initialRead;
 
   @Mock
   Datastore mockDatastore;
@@ -98,13 +98,13 @@ public final class DatastoreIOTest {
   @Rule
   public final ExpectedException thrown = ExpectedException.none();
 
-  @Rule public final ExpectedLogs logged = ExpectedLogs.none(DatastoreIO.Source.class);
+  @Rule public final ExpectedLogs logged = ExpectedLogs.none(DatastoreIO.Read.class);
 
   @Before
   public void setUp() {
     MockitoAnnotations.initMocks(this);
-    initialSource = DatastoreIO.source()
-        .withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
+    initialRead = DatastoreIO.read()
+        .withProjectId(PROJECT_ID).withQuery(QUERY).withNamespace(NAMESPACE);
   }
 
   /**
@@ -117,65 +117,65 @@ public final class DatastoreIOTest {
   }
 
   @Test
-  public void testBuildSource() throws Exception {
-    DatastoreIO.Source source = DatastoreIO.source()
-        .withDataset(DATASET).withQuery(QUERY).withNamespace(NAMESPACE);
-    assertEquals(QUERY, source.getQuery());
-    assertEquals(DATASET, source.getDataset());
-    assertEquals(NAMESPACE, source.getNamespace());
+  public void testBuildread() throws Exception {
+    DatastoreIO.Read read = DatastoreIO.read()
+        .withProjectId(PROJECT_ID).withQuery(QUERY).withNamespace(NAMESPACE);
+    assertEquals(QUERY, read.getQuery());
+    assertEquals(PROJECT_ID, read.getProjectId());
+    assertEquals(NAMESPACE, read.getNamespace());
   }
 
   /**
-   * {@link #testBuildSource} but constructed in a different order.
+   * {@link #testBuildread} but constructed in a different order.
    */
   @Test
-  public void testBuildSourceAlt() throws Exception {
-    DatastoreIO.Source source = DatastoreIO.source()
-        .withDataset(DATASET).withNamespace(NAMESPACE).withQuery(QUERY);
-    assertEquals(QUERY, source.getQuery());
-    assertEquals(DATASET, source.getDataset());
-    assertEquals(NAMESPACE, source.getNamespace());
+  public void testBuildreadAlt() throws Exception {
+    DatastoreIO.Read read = DatastoreIO.read()
+        .withProjectId(PROJECT_ID).withNamespace(NAMESPACE).withQuery(QUERY);
+    assertEquals(QUERY, read.getQuery());
+    assertEquals(PROJECT_ID, read.getProjectId());
+    assertEquals(NAMESPACE, read.getNamespace());
   }
 
   @Test
-  public void testSourceValidationFailsDataset() throws Exception {
-    DatastoreIO.Source source = DatastoreIO.source().withQuery(QUERY);
+  public void testreadValidationFailsDataset() throws Exception {
+    DatastoreIO.Read read = DatastoreIO.read().withQuery(QUERY);
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("dataset");
-    source.validate();
+    read.validate(null);
   }
 
   @Test
-  public void testSourceValidationFailsQuery() throws Exception {
-    DatastoreIO.Source source = DatastoreIO.source().withDataset(DATASET);
+  public void testreadValidationFailsQuery() throws Exception {
+    DatastoreIO.Read read = DatastoreIO.read().withProjectId(PROJECT_ID);
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("query");
-    source.validate();
+    read.validate(null);
   }
 
   @Test
-  public void testSourceValidationFailsQueryLimitZero() throws Exception {
+  public void testreadValidationFailsQueryLimitZero() throws Exception {
     Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(0)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit 0");
 
-    DatastoreIO.source().withQuery(invalidLimit);
+    DatastoreIO.read().withQuery(invalidLimit);
   }
 
   @Test
-  public void testSourceValidationFailsQueryLimitNegative() throws Exception {
+  public void testreadValidationFailsQueryLimitNegative() throws Exception {
     Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(-5)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit -5");
 
-    DatastoreIO.source().withQuery(invalidLimit);
+    DatastoreIO.read().withQuery(invalidLimit);
   }
 
   @Test
-  public void testSourceValidationSucceedsNamespace() throws Exception {
-    DatastoreIO.Source source = DatastoreIO.source().withDataset(DATASET).withQuery(QUERY);
+  public void testreadValidationSucceedsNamespace() throws Exception {
+    DatastoreIO.Read read = DatastoreIO.read().withProjectId(PROJECT_ID).withQuery(QUERY);
     /* Should succeed, as a null namespace is fine. */
-    source.validate();
+    read.validate(null);
   }
 
   @Test
@@ -183,23 +183,23 @@ public final class DatastoreIOTest {
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("datasetId");
 
-    DatastoreIO.sink().withDataset(null);
+    DatastoreIO.write().withProjectId(null);
   }
 
   @Test
   public void testSinkValidationFailsWithNoDataset() throws Exception {
-    DatastoreIO.Sink sink = DatastoreIO.sink();
+    DatastoreIO.Write sink = DatastoreIO.write();
 
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("Dataset");
 
-    sink.validate(testPipelineOptions());
+    sink.validate(null);
   }
 
   @Test
-  public void testSinkValidationSucceedsWithDataset() throws Exception {
-    DatastoreIO.Sink sink = DatastoreIO.sink().withDataset(DATASET);
-    sink.validate(testPipelineOptions());
+  public void testSinkValidationSucceedswithProjectId() throws Exception {
+    DatastoreIO.Write sink = DatastoreIO.write().withProjectId(PROJECT_ID);
+    sink.validate(null);
   }
 
   @Test
@@ -224,16 +224,16 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), eq(partition), eq(8), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Source io = initialSource
+    DatastoreIO.Read io = initialRead
         .withNamespace(null)
         .withQuery(query)
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
-    List<DatastoreIO.Source> bundles = io.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.Read> bundles = io.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(8, bundles.size());
     for (int i = 0; i < 8; ++i) {
-      DatastoreIO.Source bundle = bundles.get(i);
+      DatastoreIO.Read bundle = bundles.get(i);
       Query bundleQuery = bundle.getQuery();
       assertEquals("mykind", bundleQuery.getKind(0).getName());
       assertEquals(i, bundleQuery.getFilter().getPropertyFilter().getValue().getIntegerValue());
@@ -241,12 +241,12 @@ public final class DatastoreIOTest {
   }
 
   /**
-   * Verifies that when namespace is set in the source, the split request includes the namespace.
+   * Verifies that when namespace is set in the read, the split request includes the namespace.
    */
   @Test
-  public void testSourceWithNamespace() throws Exception {
+  public void testreadWithNamespace() throws Exception {
     QuerySplitter splitter = mock(QuerySplitter.class);
-    DatastoreIO.Source io = initialSource
+    DatastoreIO.Read io = initialRead
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
@@ -271,16 +271,16 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Source io = initialSource
+    DatastoreIO.Read io = initialRead
         .withQuery(query)
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(0L);
 
-    List<DatastoreIO.Source> bundles = io.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.Read> bundles = io.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(1, bundles.size());
     verify(splitter, never())
         .getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class));
-    DatastoreIO.Source bundle = bundles.get(0);
+    DatastoreIO.Read bundle = bundles.get(0);
     Query bundleQuery = bundle.getQuery();
     assertEquals("mykind", bundleQuery.getKind(0).getName());
     assertFalse(bundleQuery.hasFilter());
@@ -300,8 +300,8 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(2), any(Datastore.class)))
         .thenThrow(new AssertionError("Splitter should not be invoked"));
 
-    List<DatastoreIO.Source> bundles =
-        initialSource
+    List<DatastoreIO.Read> bundles =
+        initialRead
             .withQuery(query)
             .withMockSplitter(splitter)
             .splitIntoBundles(1024, testPipelineOptions());
@@ -327,8 +327,8 @@ public final class DatastoreIOTest {
         .thenThrow(exception);
 
     Query query = Query.newBuilder().addKind(KindExpression.newBuilder().setName("myKind")).build();
-    List<DatastoreIO.Source> bundles =
-        initialSource
+    List<DatastoreIO.Read> bundles =
+        initialRead
             .withQuery(query)
             .withMockSplitter(splitter)
             .withMockEstimateSizeBytes(10240L)
@@ -353,20 +353,20 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(12), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Source io = initialSource
+    DatastoreIO.Read io = initialRead
         .withQuery(query)
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
-    DatastoreIO.Source spiedIo = spy(io);
+    DatastoreIO.Read spiedIo = spy(io);
     when(spiedIo.getEstimatedSizeBytes(any(PipelineOptions.class)))
         .thenThrow(new NoSuchElementException());
 
-    List<DatastoreIO.Source> bundles = spiedIo.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.Read> bundles = spiedIo.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(1, bundles.size());
     verify(splitter, never())
         .getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class));
-    DatastoreIO.Source bundle = bundles.get(0);
+    DatastoreIO.Read bundle = bundles.get(0);
     Query bundleQuery = bundle.getQuery();
     assertEquals("mykind", bundleQuery.getKind(0).getName());
     assertFalse(bundleQuery.hasFilter());
@@ -377,8 +377,8 @@ public final class DatastoreIOTest {
    */
   @Test
   public void testBuildSink() throws Exception {
-    DatastoreIO.Sink sink = DatastoreIO.sink().withDataset(DATASET);
-    assertEquals(DATASET, sink.datasetId);
+    DatastoreIO.Write sink = DatastoreIO.write().withProjectId(PROJECT_ID);
+    assertEquals(PROJECT_ID, sink.getProjectId());
   }
 
   /**
@@ -500,7 +500,7 @@ public final class DatastoreIOTest {
     // An empty query to read entities.
     Query query =
         Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(numEntities)).build();
-    DatastoreIO.Source source = DatastoreIO.source().withQuery(query).withDataset("mockDataset");
+    DatastoreIO.Read read = DatastoreIO.Read().withQuery(query).withProjectId("mockDataset");
 
     // Use mockResponseForQuery to generate results.
     when(mockDatastore.runQuery(any(RunQueryRequest.class)))
@@ -514,7 +514,7 @@ public final class DatastoreIOTest {
             });
 
     // Actually instantiate the reader.
-    DatastoreReader reader = new DatastoreReader(source, mockDatastore);
+    DatastoreReader reader = new DatastoreReader(read, mockDatastore);
 
     // Simply count the number of results returned by the reader.
     assertTrue(reader.start());
