@@ -199,10 +199,19 @@ public class DatastoreIO {
     @Nullable
     private final String namespace;
 
-    @Override
-    public PCollection<Entity> apply(PBegin input) {
-      return input.apply(
-          org.apache.beam.sdk.io.Read.from(new DatastoreSource(projectId, query, namespace)));
+    @Nullable
+    public String getProjectId() {
+      return projectId;
+    }
+
+    @Nullable
+    public Query getQuery() {
+      return query;
+    }
+
+    @Nullable
+    public String getNamespace() {
+      return namespace;
     }
 
     /**
@@ -251,6 +260,12 @@ public class DatastoreIO {
       this.projectId = projectId;
       this.query = query;
       this.namespace = namespace;
+    }
+
+    @Override
+    public PCollection<Entity> apply(PBegin input) {
+      return input.apply(
+          org.apache.beam.sdk.io.Read.from(new DatastoreSource(projectId, query, namespace)));
     }
 
     @Override
@@ -503,10 +518,9 @@ public class DatastoreIO {
     @Nullable
     private final String projectId;
 
-    @Override
-    public PDone apply(PCollection<Entity> input) {
-      return input.apply(
-          org.apache.beam.sdk.io.Write.to(new DatastoreSink(projectId)));
+    @Nullable
+    public String getProjectId() {
+      return projectId;
     }
 
     /**
@@ -526,6 +540,12 @@ public class DatastoreIO {
      */
     private Write(@Nullable String projectId) {
       this.projectId = projectId;
+    }
+
+    @Override
+    public PDone apply(PCollection<Entity> input) {
+      return input.apply(
+          org.apache.beam.sdk.io.Write.to(new DatastoreSink(projectId)));
     }
 
     @Override
