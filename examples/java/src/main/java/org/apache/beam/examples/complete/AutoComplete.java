@@ -17,6 +17,8 @@
  */
 package org.apache.beam.examples.complete;
 
+import static com.google.datastore.v1beta3.client.DatastoreHelper.makeValue;
+
 import org.apache.beam.examples.common.DataflowExampleUtils;
 import org.apache.beam.examples.common.ExampleBigQueryTableOptions;
 import org.apache.beam.examples.common.ExamplePubsubTopicOptions;
@@ -55,12 +57,12 @@ import com.google.api.services.bigquery.model.TableFieldSchema;
 import com.google.api.services.bigquery.model.TableReference;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
-import com.google.api.services.datastore.DatastoreV1.Entity;
-import com.google.api.services.datastore.DatastoreV1.Key;
-import com.google.api.services.datastore.DatastoreV1.Value;
-import com.google.api.services.datastore.client.DatastoreHelper;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
+import com.google.datastore.v1beta3.Entity;
+import com.google.datastore.v1beta3.Key;
+import com.google.datastore.v1beta3.Value;
+import com.google.datastore.v1beta3.client.DatastoreHelper;
 
 import org.joda.time.Duration;
 
@@ -398,14 +400,11 @@ public class AutoComplete {
       List<Value> candidates = new ArrayList<>();
       for (CompletionCandidate tag : c.element().getValue()) {
         Entity.Builder tagEntity = Entity.newBuilder();
-        tagEntity.addProperty(
-            DatastoreHelper.makeProperty("tag", DatastoreHelper.makeValue(tag.value)));
-        tagEntity.addProperty(
-            DatastoreHelper.makeProperty("count", DatastoreHelper.makeValue(tag.count)));
-        candidates.add(DatastoreHelper.makeValue(tagEntity).setIndexed(false).build());
+        tagEntity.getMutableProperties().put("tag", makeValue(tag.value).build());
+        tagEntity.getMutableProperties().put("count", makeValue(tag.count).build());
+        candidates.add(makeValue(tagEntity).setExcludeFromIndexes(true).build());
       }
-      entityBuilder.addProperty(
-          DatastoreHelper.makeProperty("candidates", DatastoreHelper.makeValue(candidates)));
+      entityBuilder.getMutableProperties().put("candidates", makeValue(candidates).build());
       c.output(entityBuilder.build());
     }
   }
@@ -484,7 +483,7 @@ public class AutoComplete {
     if (options.getOutputToDatastore()) {
       toWrite
       .apply(ParDo.named("FormatForDatastore").of(new FormatForDatastore(options.getKind())))
-      .apply(DatastoreIO.writeTo(MoreObjects.firstNonNull(
+      .apply(DatastoreIO.write().withProjectId(MoreObjects.firstNonNull(
           options.getOutputDataset(), options.getProject())));
     }
     if (options.getOutputToBigQuery()) {
