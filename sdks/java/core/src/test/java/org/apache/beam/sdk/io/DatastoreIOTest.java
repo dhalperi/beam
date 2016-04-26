@@ -110,7 +110,7 @@ public final class DatastoreIOTest {
   /**
    * Helper function to create a test {@code DataflowPipelineOptions}.
    */
-  static GcpOptions testPipelineOptions() {
+  private static GcpOptions testPipelineOptions() {
     GcpOptions options = PipelineOptionsFactory.as(GcpOptions.class);
     options.setGcpCredential(new TestCredential());
     return options;
@@ -224,16 +224,17 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), eq(partition), eq(8), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Read io = initialRead
+    DatastoreIO.DatastoreSource io = initialRead
         .withNamespace(null)
         .withQuery(query)
+        .getSource()
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
-    List<DatastoreIO.Read> bundles = io.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.DatastoreSource> bundles = io.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(8, bundles.size());
     for (int i = 0; i < 8; ++i) {
-      DatastoreIO.Read bundle = bundles.get(i);
+      DatastoreIO.DatastoreSource bundle = bundles.get(i);
       Query bundleQuery = bundle.getQuery();
       assertEquals("mykind", bundleQuery.getKind(0).getName());
       assertEquals(i, bundleQuery.getFilter().getPropertyFilter().getValue().getIntegerValue());
@@ -246,7 +247,8 @@ public final class DatastoreIOTest {
   @Test
   public void testreadWithNamespace() throws Exception {
     QuerySplitter splitter = mock(QuerySplitter.class);
-    DatastoreIO.Read io = initialRead
+    DatastoreIO.DatastoreSource io = initialRead
+        .getSource()
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
@@ -271,16 +273,17 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Read io = initialRead
+    DatastoreIO.DatastoreSource io = initialRead
         .withQuery(query)
+        .getSource()
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(0L);
 
-    List<DatastoreIO.Read> bundles = io.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.DatastoreSource> bundles = io.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(1, bundles.size());
     verify(splitter, never())
         .getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class));
-    DatastoreIO.Read bundle = bundles.get(0);
+    DatastoreIO.DatastoreSource bundle = bundles.get(0);
     Query bundleQuery = bundle.getQuery();
     assertEquals("mykind", bundleQuery.getKind(0).getName());
     assertFalse(bundleQuery.hasFilter());
@@ -300,9 +303,10 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(2), any(Datastore.class)))
         .thenThrow(new AssertionError("Splitter should not be invoked"));
 
-    List<DatastoreIO.Read> bundles =
+    List<DatastoreIO.DatastoreSource> bundles =
         initialRead
             .withQuery(query)
+            .getSource()
             .withMockSplitter(splitter)
             .splitIntoBundles(1024, testPipelineOptions());
 
@@ -327,9 +331,10 @@ public final class DatastoreIOTest {
         .thenThrow(exception);
 
     Query query = Query.newBuilder().addKind(KindExpression.newBuilder().setName("myKind")).build();
-    List<DatastoreIO.Read> bundles =
+    List<DatastoreIO.DatastoreSource> bundles =
         initialRead
             .withQuery(query)
+            .getSource()
             .withMockSplitter(splitter)
             .withMockEstimateSizeBytes(10240L)
             .splitIntoBundles(1024, testPipelineOptions());
@@ -353,20 +358,21 @@ public final class DatastoreIOTest {
     when(splitter.getSplits(any(Query.class), any(PartitionId.class), eq(12), any(Datastore.class)))
         .thenReturn(mockSplits);
 
-    DatastoreIO.Read io = initialRead
+    DatastoreIO.DatastoreSource io = initialRead
         .withQuery(query)
+        .getSource()
         .withMockSplitter(splitter)
         .withMockEstimateSizeBytes(8 * 1024L);
 
-    DatastoreIO.Read spiedIo = spy(io);
+    DatastoreIO.DatastoreSource spiedIo = spy(io);
     when(spiedIo.getEstimatedSizeBytes(any(PipelineOptions.class)))
         .thenThrow(new NoSuchElementException());
 
-    List<DatastoreIO.Read> bundles = spiedIo.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.DatastoreSource> bundles = spiedIo.splitIntoBundles(1024, testPipelineOptions());
     assertEquals(1, bundles.size());
     verify(splitter, never())
         .getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class));
-    DatastoreIO.Read bundle = bundles.get(0);
+    DatastoreIO.DatastoreSource bundle = bundles.get(0);
     Query bundleQuery = bundle.getQuery();
     assertEquals("mykind", bundleQuery.getKind(0).getName());
     assertFalse(bundleQuery.hasFilter());
@@ -500,7 +506,7 @@ public final class DatastoreIOTest {
     // An empty query to read entities.
     Query query =
         Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(numEntities)).build();
-    DatastoreIO.Read read = DatastoreIO.Read().withQuery(query).withProjectId("mockDataset");
+    DatastoreIO.Read read = DatastoreIO.read().withQuery(query).withProjectId("mockDataset");
 
     // Use mockResponseForQuery to generate results.
     when(mockDatastore.runQuery(any(RunQueryRequest.class)))
@@ -514,7 +520,7 @@ public final class DatastoreIOTest {
             });
 
     // Actually instantiate the reader.
-    DatastoreReader reader = new DatastoreReader(read, mockDatastore);
+    DatastoreReader reader = new DatastoreReader(read.getSource(), mockDatastore);
 
     // Simply count the number of results returned by the reader.
     assertTrue(reader.start());

@@ -262,10 +262,14 @@ public class DatastoreIO {
       this.namespace = namespace;
     }
 
+    @VisibleForTesting
+    DatastoreSource getSource() {
+      return new DatastoreSource(projectId, query, namespace);
+    }
+
     @Override
     public PCollection<Entity> apply(PBegin input) {
-      return input.apply(
-          org.apache.beam.sdk.io.Read.from(new DatastoreSource(projectId, query, namespace)));
+      return input.apply(org.apache.beam.sdk.io.Read.from(getSource()));
     }
 
     @Override
@@ -284,7 +288,8 @@ public class DatastoreIO {
     }
   }
 
-  private static class DatastoreSource extends BoundedSource<Entity> {
+  @VisibleForTesting
+  static class DatastoreSource extends BoundedSource<Entity> {
     @Override
     public Coder<Entity> getDefaultOutputCoder() {
       return ProtoCoder.of(Entity.class);
@@ -482,7 +487,7 @@ public class DatastoreIO {
       return DatastoreFactory.get().create(builder.build());
     }
 
-    /** For testing only. */
+    @VisibleForTesting
     DatastoreSource withMockSplitter(QuerySplitter splitter) {
       DatastoreSource res = new DatastoreSource(projectId, query, namespace);
       res.mockSplitter = splitter;
@@ -490,12 +495,17 @@ public class DatastoreIO {
       return res;
     }
 
-    /** For testing only. */
+    @VisibleForTesting
     DatastoreSource withMockEstimateSizeBytes(Long estimateSizeBytes) {
       DatastoreSource res = new DatastoreSource(projectId, query, namespace);
       res.mockSplitter = mockSplitter;
       res.mockEstimateSizeBytes = estimateSizeBytes;
       return res;
+    }
+
+    @VisibleForTesting
+    Query getQuery() {
+      return query;
     }
   }
 
@@ -789,7 +799,8 @@ public class DatastoreIO {
    * <p>Timestamped records are currently not supported.
    * All records implicitly have the timestamp of {@code BoundedWindow.TIMESTAMP_MIN_VALUE}.
    */
-  public static class DatastoreReader extends BoundedSource.BoundedReader<Entity> {
+  @VisibleForTesting
+  static class DatastoreReader extends BoundedSource.BoundedReader<Entity> {
     private final DatastoreSource source;
 
     /**
