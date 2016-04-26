@@ -483,7 +483,7 @@ public class AutoComplete {
     if (options.getOutputToDatastore()) {
       toWrite
       .apply(ParDo.named("FormatForDatastore").of(new FormatForDatastore(options.getKind())))
-      .apply(DatastoreIO.writeTo(MoreObjects.firstNonNull(
+      .apply(DatastoreIO.write().withProjectId(MoreObjects.firstNonNull(
           options.getOutputDataset(), options.getProject())));
     }
     if (options.getOutputToBigQuery()) {
