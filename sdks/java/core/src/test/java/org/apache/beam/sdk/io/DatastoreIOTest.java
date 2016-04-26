@@ -98,7 +98,7 @@ public final class DatastoreIOTest {
   @Rule
   public final ExpectedException thrown = ExpectedException.none();
 
-  @Rule public final ExpectedLogs logged = ExpectedLogs.none(DatastoreIO.Read.class);
+  @Rule public final ExpectedLogs logged = ExpectedLogs.none(DatastoreIO.DatastoreSource.class);
 
   @Before
   public void setUp() {
@@ -138,15 +138,15 @@ public final class DatastoreIOTest {
   }
 
   @Test
-  public void testreadValidationFailsDataset() throws Exception {
+  public void testReadValidationFailsProjectId() throws Exception {
     DatastoreIO.Read read = DatastoreIO.read().withQuery(QUERY);
     thrown.expect(NullPointerException.class);
-    thrown.expectMessage("dataset");
+    thrown.expectMessage("projectId");
     read.validate(null);
   }
 
   @Test
-  public void testreadValidationFailsQuery() throws Exception {
+  public void testReadValidationFailsQuery() throws Exception {
     DatastoreIO.Read read = DatastoreIO.read().withProjectId(PROJECT_ID);
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("query");
@@ -154,7 +154,7 @@ public final class DatastoreIOTest {
   }
 
   @Test
-  public void testreadValidationFailsQueryLimitZero() throws Exception {
+  public void testReadValidationFailsQueryLimitZero() throws Exception {
     Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(0)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit 0");
@@ -163,7 +163,7 @@ public final class DatastoreIOTest {
   }
 
   @Test
-  public void testreadValidationFailsQueryLimitNegative() throws Exception {
+  public void testReadValidationFailsQueryLimitNegative() throws Exception {
     Query invalidLimit = Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(-5)).build();
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid query limit -5");
@@ -172,26 +172,26 @@ public final class DatastoreIOTest {
   }
 
   @Test
-  public void testreadValidationSucceedsNamespace() throws Exception {
+  public void testReadValidationSucceedsNamespace() throws Exception {
     DatastoreIO.Read read = DatastoreIO.read().withProjectId(PROJECT_ID).withQuery(QUERY);
     /* Should succeed, as a null namespace is fine. */
     read.validate(null);
   }
 
   @Test
-  public void testSinkDoesNotAllowNullDataset() throws Exception {
+  public void testSinkDoesNotAllowNullProject() throws Exception {
     thrown.expect(NullPointerException.class);
-    thrown.expectMessage("datasetId");
+    thrown.expectMessage("projectId");
 
     DatastoreIO.write().withProjectId(null);
   }
 
   @Test
-  public void testSinkValidationFailsWithNoDataset() throws Exception {
+  public void testSinkValidationFailsWithNoProject() throws Exception {
     DatastoreIO.Write sink = DatastoreIO.write();
 
     thrown.expect(NullPointerException.class);
-    thrown.expectMessage("Dataset");
+    thrown.expectMessage("projectId");
 
     sink.validate(null);
   }
@@ -368,7 +368,8 @@ public final class DatastoreIOTest {
     when(spiedIo.getEstimatedSizeBytes(any(PipelineOptions.class)))
         .thenThrow(new NoSuchElementException());
 
-    List<DatastoreIO.DatastoreSource> bundles = spiedIo.splitIntoBundles(1024, testPipelineOptions());
+    List<DatastoreIO.DatastoreSource> bundles = spiedIo
+        .splitIntoBundles(1024, testPipelineOptions());
     assertEquals(1, bundles.size());
     verify(splitter, never())
         .getSplits(any(Query.class), any(PartitionId.class), eq(1), any(Datastore.class));
@@ -506,7 +507,7 @@ public final class DatastoreIOTest {
     // An empty query to read entities.
     Query query =
         Query.newBuilder().setLimit(Int32Value.newBuilder().setValue(numEntities)).build();
-    DatastoreIO.Read read = DatastoreIO.read().withQuery(query).withProjectId("mockDataset");
+    DatastoreIO.Read read = DatastoreIO.read().withQuery(query).withProjectId("mockProject");
 
     // Use mockResponseForQuery to generate results.
     when(mockDatastore.runQuery(any(RunQueryRequest.class)))

@@ -301,7 +301,8 @@ public class DatastoreIO {
     }
 
     @Override
-    public List<DatastoreSource> splitIntoBundles(long desiredBundleSizeBytes, PipelineOptions options)
+    public List<DatastoreSource> splitIntoBundles(long desiredBundleSizeBytes,
+        PipelineOptions options)
         throws Exception {
       // Users may request a limit on the number of results. We can currently support this by
       // simply disabling parallel reads and using only a single split.
@@ -400,7 +401,7 @@ public class DatastoreIO {
 
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    private static final Logger LOG = LoggerFactory.getLogger(Source.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatastoreSource.class);
     private final String projectId;
     private final Query query;
     @Nullable
@@ -512,8 +513,8 @@ public class DatastoreIO {
   ///////////////////// Write Class /////////////////////////////////
 
   /**
-   * Returns an empty {@link DatastoreIO.Write} builder. Configure the destination {@code projectId},
-   * using {@link DatastoreIO.Write#withProjectId}.
+   * Returns an empty {@link DatastoreIO.Write} builder. Configure the destination
+   * {@code projectId} using {@link DatastoreIO.Write#withProjectId}.
    */
   public static Write write() {
     return new Write(null);
