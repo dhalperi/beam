@@ -203,10 +203,10 @@ public class DataflowRunnerTest {
             });
 
     when(mockGcsUtil.isGcsPatternSupported(anyString())).thenReturn(true);
-    when(mockGcsUtil.expand(any(GcsPath.class))).then(new Answer<List<GcsPath>>() {
+    when(mockGcsUtil.expandAndStat(any(GcsPath.class))).then(new Answer<List<KV<GcsPath, Long>>>() {
       @Override
-      public List<GcsPath> answer(InvocationOnMock invocation) throws Throwable {
-        return ImmutableList.of((GcsPath) invocation.getArguments()[0]);
+      public List<KV<GcsPath, Long>> answer(InvocationOnMock invocation) throws Throwable {
+        return ImmutableList.of(KV.of((GcsPath) invocation.getArguments()[0], 0L));
       }
     });
     when(mockGcsUtil.bucketAccessible(any(GcsPath.class)))

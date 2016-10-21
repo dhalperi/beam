@@ -23,7 +23,6 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.isNullOrEmpty;
 
 import com.google.common.collect.Ordering;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
@@ -36,11 +35,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
-
 import javax.annotation.Nullable;
-
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.SerializableCoder;
 import org.apache.beam.sdk.options.PipelineOptions;
@@ -52,6 +50,7 @@ import org.apache.beam.sdk.util.GcsUtil.GcsUtilFactory;
 import org.apache.beam.sdk.util.IOChannelFactory;
 import org.apache.beam.sdk.util.IOChannelUtils;
 import org.apache.beam.sdk.util.MimeTypes;
+import org.apache.beam.sdk.values.KV;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,7 +129,8 @@ public abstract class FileBasedSink<T> extends Sink<T> {
 
   /**
    * The {@link WritableByteChannelFactory} that is used to wrap the raw data output to the
-   * underlying channel. The default is to not compress the output using {@link #UNCOMPRESSED}.
+   * underlying channel. The default is to not compress the output using
+   * {@link CompressionType#UNCOMPRESSED}.
    */
   protected final WritableByteChannelFactory writableByteChannelFactory;
 
@@ -206,7 +206,8 @@ public abstract class FileBasedSink<T> extends Sink<T> {
   /**
    * Perform pipeline-construction-time validation. The default implementation is a no-op.
    * Subclasses should override to ensure the sink is valid and can be written to. It is recommended
-   * to use {@link Preconditions#checkState(boolean)} in the implementation of this method.
+   * to use {@link com.google.common.base.Preconditions#checkState} in the implementation of this
+   * method.
    */
   @Override
   public void validate(PipelineOptions options) {}
@@ -480,7 +481,10 @@ public abstract class FileBasedSink<T> extends Sink<T> {
       LOG.debug("Finding temporary bundle output files matching {}.", pattern);
       FileOperations fileOperations = FileOperationsFactory.getFileOperations(pattern, options);
       IOChannelFactory factory = IOChannelUtils.getFactory(pattern);
-      Collection<String> matches = factory.match(pattern);
+      List<String> matches = new LinkedList<>();
+      for (KV<String, Long> file : factory.match(pattern)) {
+        matches.add(file.getKey());
+      }
       LOG.debug("{} temporary files matched {}", matches.size(), pattern);
       LOG.debug("Removing {} files.", matches.size());
       fileOperations.remove(matches);

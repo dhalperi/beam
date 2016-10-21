@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Collection;
+import org.apache.beam.sdk.values.KV;
 
 /**
  * Defines a factory for working with read and write channels.
@@ -44,7 +45,7 @@ public interface IOChannelFactory {
    * <p>The list of resources returned are required to exist and not represent abstract
    * resources such as symlinks and directories.
    */
-  Collection<String> match(String spec) throws IOException;
+  Collection<KV<String, Long>> match(String spec) throws IOException;
 
   /**
    * Returns a read channel for the given specification.

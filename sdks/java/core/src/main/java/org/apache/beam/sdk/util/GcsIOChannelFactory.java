@@ -17,14 +17,16 @@
  */
 package org.apache.beam.sdk.util;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Collection;
-import java.util.LinkedList;
 import java.util.List;
 import org.apache.beam.sdk.options.GcsOptions;
 import org.apache.beam.sdk.util.gcsfs.GcsPath;
+import org.apache.beam.sdk.values.KV;
 
 /**
  * Implements IOChannelFactory for GCS.
@@ -38,17 +40,17 @@ public class GcsIOChannelFactory implements IOChannelFactory {
   }
 
   @Override
-  public Collection<String> match(String spec) throws IOException {
+  public Collection<KV<String, Long>> match(String spec) throws IOException {
     GcsPath path = GcsPath.fromUri(spec);
     GcsUtil util = options.getGcsUtil();
-    List<GcsPath> matched = util.expand(path);
+    List<KV<GcsPath, Long>> matched = util.expandAndStat(path);
 
-    List<String> specs = new LinkedList<>();
-    for (GcsPath match : matched) {
-      specs.add(match.toString());
-    }
-
-    return specs;
+    return Lists.transform(matched, new Function<KV<GcsPath, Long>, KV<String, Long>>(){
+      @Override
+      public KV<String, Long> apply(KV<GcsPath, Long> input) {
+        return KV.of(input.getKey().toString(), input.getValue());
+      }
+    });
   }
 
   @Override

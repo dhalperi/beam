@@ -89,11 +89,11 @@ public class MinimalWordCountJava8Test implements Serializable {
     // Any request for expansion returns a list containing the original GcsPath
     // This is required to pass validation that occurs in TextIO during apply()
     Mockito
-        .when(mockGcsUtil.expand(Mockito.any(GcsPath.class)))
-        .then(new Answer<List<GcsPath>>() {
+        .when(mockGcsUtil.expandAndStat(Mockito.any(GcsPath.class)))
+        .then(new Answer<List<KV<GcsPath, Long>>>() {
           @Override
-          public List<GcsPath> answer(InvocationOnMock invocation) throws Throwable {
-            return ImmutableList.of((GcsPath) invocation.getArguments()[0]);
+          public List<KV<GcsPath, Long>> answer(InvocationOnMock invocation) throws Throwable {
+            return ImmutableList.of(KV.of((GcsPath) invocation.getArguments()[0], 0L));
           }
         });
 

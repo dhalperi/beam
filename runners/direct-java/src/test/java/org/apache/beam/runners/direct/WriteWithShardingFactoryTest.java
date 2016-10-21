@@ -30,7 +30,6 @@ import static org.junit.Assert.assertThat;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
-import java.io.File;
 import java.io.FileReader;
 import java.io.Reader;
 import java.nio.CharBuffer;
@@ -91,12 +90,13 @@ public class WriteWithShardingFactoryTest {
 
     p.run();
 
-    Collection<String> files = IOChannelUtils.getFactory(outputPath).match(targetLocation + "*");
-    List<String> actuals = new ArrayList(strs.size());
-    for (String file : files) {
-      CharBuffer buf = CharBuffer.allocate((int) new File(file).length());
-      try (Reader reader = new FileReader(file)) {
-        reader.read(buf);
+    Collection<KV<String, Long>> files =
+        IOChannelUtils.getFactory(outputPath).match(targetLocation + "*");
+    List<String> actuals = new ArrayList<>(strs.size());
+    for (KV<String, Long> file : files) {
+      CharBuffer buf = CharBuffer.allocate(file.getValue().intValue());
+      try (Reader reader = new FileReader(file.getKey())) {
+        assertThat(reader.read(buf), equalTo(file.getValue().intValue()));
         buf.flip();
       }
 

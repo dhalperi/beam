@@ -40,6 +40,7 @@ import com.google.cloud.hadoop.util.ClientRequestHelper;
 import com.google.cloud.hadoop.util.ResilientOperation;
 import com.google.cloud.hadoop.util.RetryDeterminer;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
@@ -69,6 +70,7 @@ import org.apache.beam.sdk.options.DefaultValueFactory;
 import org.apache.beam.sdk.options.GcsOptions;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.util.gcsfs.GcsPath;
+import org.apache.beam.sdk.values.KV;
 import org.joda.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,6 +173,21 @@ public class GcsUtil {
    * exists.
    */
   public List<GcsPath> expand(GcsPath gcsPattern) throws IOException {
+    return Lists.transform(expandAndStat(gcsPattern),
+        new Function<KV<GcsPath, Long>, GcsPath>() {
+          @Override
+          public GcsPath apply(KV<GcsPath, Long> input) {
+            return input.getKey();
+          }
+        });
+  }
+
+  /**
+   * Expands a pattern into matched paths. The pattern path may contain globs, which are expanded
+   * in the result. For patterns that only match a single object, we ensure that the object
+   * exists.
+   */
+  public List<KV<GcsPath, Long>> expandAndStat(GcsPath gcsPattern) throws IOException {
     checkArgument(isGcsPatternSupported(gcsPattern.getObject()));
     Matcher m = GLOB_PREFIX.matcher(gcsPattern.getObject());
     Pattern p = null;
@@ -182,12 +199,12 @@ public class GcsUtil {
       try {
         // Use a get request to fetch the metadata of the object,
         // the request has strong global consistency.
-        ResilientOperation.retry(
+        StorageObject object = ResilientOperation.retry(
             ResilientOperation.getGoogleRequestCallable(getObject),
             BACKOFF_FACTORY.backoff(),
             RetryDeterminer.SOCKET_ERRORS,
             IOException.class);
-        return ImmutableList.of(gcsPattern);
+        return ImmutableList.of(KV.of(gcsPattern, object.getSize().longValue()));
       } catch (IOException | InterruptedException e) {
         if (e instanceof InterruptedException) {
           Thread.currentThread().interrupt();
@@ -213,7 +230,7 @@ public class GcsUtil {
     listObject.setPrefix(prefix);
 
     String pageToken = null;
-    List<GcsPath> results = new LinkedList<>();
+    List<KV<GcsPath, Long>> results = new LinkedList<>();
     do {
       if (pageToken != null) {
         listObject.setPageToken(pageToken);
@@ -243,7 +260,7 @@ public class GcsUtil {
         // Skip directories, which end with a slash.
         if (p.matcher(name).matches() && !name.endsWith("/")) {
           LOG.debug("Matched object: {}", name);
-          results.add(GcsPath.fromObject(o));
+          results.add(KV.of(GcsPath.fromObject(o), o.getSize().longValue()));
         }
       }
 

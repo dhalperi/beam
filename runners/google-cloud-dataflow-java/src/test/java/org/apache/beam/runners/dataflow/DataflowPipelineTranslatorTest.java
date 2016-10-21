@@ -81,6 +81,7 @@ import org.apache.beam.sdk.util.Structs;
 import org.apache.beam.sdk.util.TestCredential;
 import org.apache.beam.sdk.util.WindowingStrategy;
 import org.apache.beam.sdk.util.gcsfs.GcsPath;
+import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionTuple;
 import org.apache.beam.sdk.values.PDone;
@@ -153,10 +154,10 @@ public class DataflowPipelineTranslatorTest implements Serializable {
 
   private static DataflowPipelineOptions buildPipelineOptions() throws IOException {
     GcsUtil mockGcsUtil = mock(GcsUtil.class);
-    when(mockGcsUtil.expand(any(GcsPath.class))).then(new Answer<List<GcsPath>>() {
+    when(mockGcsUtil.expandAndStat(any(GcsPath.class))).then(new Answer<List<KV<GcsPath, Long>>>() {
       @Override
-      public List<GcsPath> answer(InvocationOnMock invocation) throws Throwable {
-        return ImmutableList.of((GcsPath) invocation.getArguments()[0]);
+      public List<KV<GcsPath, Long>> answer(InvocationOnMock invocation) throws Throwable {
+        return ImmutableList.of(KV.of((GcsPath) invocation.getArguments()[0], 0L));
       }
     });
     when(mockGcsUtil.bucketAccessible(any(GcsPath.class))).thenReturn(true);

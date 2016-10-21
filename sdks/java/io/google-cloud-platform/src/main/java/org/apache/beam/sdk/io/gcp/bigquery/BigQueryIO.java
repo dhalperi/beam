@@ -59,6 +59,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -618,14 +619,17 @@ public class BigQueryIO {
                 Job extractJob = bqServices.getJobService(bqOptions)
                     .getJob(jobRef);
 
-                Collection<String> extractFiles = null;
+                Collection<String> extractFiles = new LinkedList<>();
                 if (extractJob != null) {
                   extractFiles = getExtractFilePaths(extractDestinationDir, extractJob);
                 } else {
                   IOChannelFactory factory = IOChannelUtils.getFactory(extractDestinationDir);
-                  Collection<String> dirMatch = factory.match(extractDestinationDir);
+                  Collection<KV<String, Long>> dirMatch = factory.match(extractDestinationDir);
                   if (!dirMatch.isEmpty()) {
-                    extractFiles = factory.match(factory.resolve(extractDestinationDir, "*"));
+                    dirMatch = factory.match(factory.resolve(extractDestinationDir, "*"));
+                  }
+                  for (KV<String, Long> file : dirMatch) {
+                    extractFiles.add(file.getKey());
                   }
                 }
                 if (extractFiles != null && !extractFiles.isEmpty()) {

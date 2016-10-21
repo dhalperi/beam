@@ -34,6 +34,7 @@ import java.util.List;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.util.IOChannelFactory;
 import org.apache.beam.sdk.util.IOChannelUtils;
+import org.apache.beam.sdk.values.KV;
 import org.hamcrest.Description;
 import org.hamcrest.TypeSafeMatcher;
 import org.slf4j.Logger;
@@ -90,17 +91,18 @@ public class FileChecksumMatcher extends TypeSafeMatcher<PipelineResult>
     IOChannelFactory factory = IOChannelUtils.getFactory(path);
 
     // Match inputPath which may contains glob
-    Collection<String> files = factory.match(path);
+    Collection<KV<String, Long>> files = factory.match(path);
 
     // Read data from file paths
     int i = 0;
-    for (String file : files) {
+    for (KV<String, Long> file : files) {
+      String filename = file.getKey();
       try (Reader reader =
-          Channels.newReader(factory.open(file), StandardCharsets.UTF_8.name())) {
+          Channels.newReader(factory.open(filename), StandardCharsets.UTF_8.name())) {
         List<String> lines = CharStreams.readLines(reader);
         readData.addAll(lines);
         LOG.info(
-            "[{} of {}] Read {} lines from file: {}", i, files.size() - 1, lines.size(), file);
+            "[{} of {}] Read {} lines from file: {}", i, files.size() - 1, lines.size(), filename);
       }
       i++;
     }

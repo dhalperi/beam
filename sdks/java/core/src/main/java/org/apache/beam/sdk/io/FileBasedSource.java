@@ -31,17 +31,16 @@ import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.util.IOChannelFactory;
 import org.apache.beam.sdk.util.IOChannelUtils;
+import org.apache.beam.sdk.values.KV;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,10 +67,6 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
   private static final Logger LOG = LoggerFactory.getLogger(FileBasedSource.class);
-  private static final float FRACTION_OF_FILES_TO_STAT = 0.01f;
-
-  // Package-private for testing
-  static final int MAX_NUMBER_OF_FILES_FOR_AN_EXACT_STAT = 100;
 
   // Size of the thread pool to be used for performing file operations in parallel.
   // Package-private for testing.
@@ -188,20 +183,9 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
 
     IOChannelFactory factory = IOChannelUtils.getFactory(fileOrPatternSpec);
     if (mode == Mode.FILEPATTERN) {
-      // TODO Implement a more efficient parallel/batch size estimation mechanism for file patterns.
-      long startTime = System.currentTimeMillis();
       long totalSize = 0;
-      Collection<String> inputs = factory.match(fileOrPatternSpec);
-      if (inputs.size() <= MAX_NUMBER_OF_FILES_FOR_AN_EXACT_STAT) {
-        totalSize = getExactTotalSizeOfFiles(inputs, factory);
-        LOG.debug("Size estimation of all files of pattern {} took {} ms",
-            fileOrPatternSpec,
-            System.currentTimeMillis() - startTime);
-      } else {
-        totalSize = getEstimatedSizeOfFilesBySampling(inputs, factory);
-        LOG.debug("Size estimation of pattern {} by sampling took {} ms",
-            fileOrPatternSpec,
-            System.currentTimeMillis() - startTime);
+      for (KV<String, Long> file : factory.match(fileOrPatternSpec)) {
+        totalSize += file.getValue();
       }
       return totalSize;
     } else {
@@ -209,66 +193,6 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
       long end = Math.min(getEndOffset(), getMaxEndOffset(options));
       return end - start;
     }
-  }
-
-  // Get the exact total size of the given set of files.
-  // Invokes multiple requests for size estimation in parallel using a thread pool.
-  // TODO: replace this with bulk request API when it is available. Will require updates
-  // to IOChannelFactory interface.
-  private static long getExactTotalSizeOfFiles(
-      Collection<String> files, IOChannelFactory ioChannelFactory) throws IOException {
-    List<ListenableFuture<Long>> futures = new ArrayList<>();
-    ListeningExecutorService service =
-        MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(THREAD_POOL_SIZE));
-    try {
-      long totalSize = 0;
-      for (String file : files) {
-        futures.add(createFutureForSizeEstimation(file, ioChannelFactory, service));
-      }
-
-      for (Long val : Futures.allAsList(futures).get()) {
-        totalSize += val;
-      }
-
-      return totalSize;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException(e);
-    } catch (ExecutionException e) {
-      throw new IOException(e.getCause());
-    }  finally {
-      service.shutdown();
-    }
-  }
-
-  private static ListenableFuture<Long> createFutureForSizeEstimation(
-      final String file,
-      final IOChannelFactory ioChannelFactory,
-      ListeningExecutorService service) {
-    return service.submit(
-        new Callable<Long>() {
-          @Override
-          public Long call() throws IOException {
-            return ioChannelFactory.getSizeBytes(file);
-          }
-        });
-  }
-
-  // Estimate the total size of the given set of files through sampling and extrapolation.
-  // Currently we use uniform sampling which requires a linear sampling size for a reasonable
-  // estimate.
-  // TODO: Implement a more efficient sampling mechanism.
-  private static long getEstimatedSizeOfFilesBySampling(
-      Collection<String> files, IOChannelFactory ioChannelFactory) throws IOException {
-    int sampleSize = (int) (FRACTION_OF_FILES_TO_STAT * files.size());
-    sampleSize = Math.max(MAX_NUMBER_OF_FILES_FOR_AN_EXACT_STAT, sampleSize);
-
-    List<String> selectedFiles = new ArrayList<String>(files);
-    Collections.shuffle(selectedFiles);
-    selectedFiles = selectedFiles.subList(0, sampleSize);
-
-    return files.size() * getExactTotalSizeOfFiles(selectedFiles, ioChannelFactory)
-        / selectedFiles.size();
   }
 
   @Override
@@ -279,14 +203,14 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
   }
 
   private ListenableFuture<List<? extends FileBasedSource<T>>> createFutureForFileSplit(
-      final String file,
+      final KV<String, Long> file,
       final long desiredBundleSizeBytes,
       final PipelineOptions options,
       ListeningExecutorService service) {
     return service.submit(new Callable<List<? extends FileBasedSource<T>>>() {
       @Override
       public List<? extends FileBasedSource<T>> call() throws Exception {
-        return createForSubrangeOfFile(file, 0, Long.MAX_VALUE)
+        return createForSubrangeOfFile(file.getKey(), 0, file.getValue())
             .splitIntoBundles(desiredBundleSizeBytes, options);
       }
     });
@@ -307,7 +231,7 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
       ListeningExecutorService service =
           MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(THREAD_POOL_SIZE));
       try {
-        for (final String file : FileBasedSource.expandFilePattern(fileOrPatternSpec)) {
+        for (final KV<String, Long> file : FileBasedSource.expandFilePattern(fileOrPatternSpec)) {
           futures.add(createFutureForFileSplit(file, desiredBundleSizeBytes, options, service));
         }
         List<? extends FileBasedSource<T>> splitResults =
@@ -357,18 +281,12 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
 
     if (mode == Mode.FILEPATTERN) {
       long startTime = System.currentTimeMillis();
-      Collection<String> files = FileBasedSource.expandFilePattern(fileOrPatternSpec);
+      Collection<KV<String, Long>> files = FileBasedSource.expandFilePattern(fileOrPatternSpec);
       List<FileBasedReader<T>> fileReaders = new ArrayList<>();
-      for (String fileName : files) {
-        long endOffset;
-        try {
-          endOffset = IOChannelUtils.getFactory(fileName).getSizeBytes(fileName);
-        } catch (IOException e) {
-          LOG.warn("Failed to get size of {}", fileName, e);
-          endOffset = Long.MAX_VALUE;
-        }
+      for (KV<String, Long> file : files) {
+        long endOffset = file.getValue();
         fileReaders.add(
-            createForSubrangeOfFile(fileName, 0, endOffset).createSingleFileReader(options));
+            createForSubrangeOfFile(file.getKey(), 0, endOffset).createSingleFileReader(options));
       }
       LOG.debug(
           "Creating a reader for file pattern {} took {} ms",
@@ -427,10 +345,10 @@ public abstract class FileBasedSource<T> extends OffsetBasedSource<T> {
     }
   }
 
-  protected static final Collection<String> expandFilePattern(String fileOrPatternSpec)
+  protected static final Collection<KV<String, Long>> expandFilePattern(String fileOrPatternSpec)
       throws IOException {
     IOChannelFactory factory = IOChannelUtils.getFactory(fileOrPatternSpec);
-    Collection<String> matches = factory.match(fileOrPatternSpec);
+    Collection<KV<String, Long>> matches = factory.match(fileOrPatternSpec);
     LOG.info("Matched {} files for pattern {}", matches.size(), fileOrPatternSpec);
     return matches;
   }

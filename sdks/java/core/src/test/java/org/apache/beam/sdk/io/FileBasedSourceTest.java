@@ -55,6 +55,7 @@ import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.util.CoderUtils;
 import org.apache.beam.sdk.util.IOChannelFactory;
 import org.apache.beam.sdk.util.IOChannelUtils;
+import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.junit.Rule;
 import org.junit.Test;
@@ -448,21 +449,14 @@ public class FileBasedSourceTest {
     }
   }
 
+  private static KV<String, Long> mkFileSize(File f) {
+    return KV.of(f.getPath(), f.length());
+  }
+
   @Test
   public void testFullyReadFilePatternFirstRecordEmpty() throws IOException {
     PipelineOptions options = PipelineOptionsFactory.create();
     File file1 = createFileWithData("file1", new ArrayList<String>());
-
-    IOChannelFactory mockIOFactory = Mockito.mock(IOChannelFactory.class);
-    String parent = file1.getParent();
-    String pattern = "mocked://test";
-    when(mockIOFactory.match(pattern))
-        .thenReturn(
-            ImmutableList.of(
-                new File(parent, "file1").getPath(),
-                new File(parent, "file2").getPath(),
-                new File(parent, "file3").getPath()));
-    IOChannelUtils.setIOFactory("mocked", mockIOFactory);
 
     List<String> data2 = createStringDataset(3, 50);
     createFileWithData("file2", data2);
@@ -472,6 +466,18 @@ public class FileBasedSourceTest {
 
     List<String> data4 = createStringDataset(3, 50);
     createFileWithData("otherfile", data4);
+
+
+    IOChannelFactory mockIOFactory = Mockito.mock(IOChannelFactory.class);
+    String parent = file1.getParent();
+    String pattern = "mocked://test";
+    when(mockIOFactory.match(pattern))
+        .thenReturn(
+            ImmutableList.of(
+                mkFileSize(new File(parent, "file1")),
+                mkFileSize(new File(parent, "file2")),
+                mkFileSize(new File(parent, "file3"))));
+    IOChannelUtils.setIOFactory("mocked", mockIOFactory);
 
     TestFileBasedSource source = new TestFileBasedSource(pattern, 64, null);
 
@@ -806,53 +812,6 @@ public class FileBasedSourceTest {
 
     // Since all files are of equal size, sampling should produce the exact result.
     assertEquals(totalSize, source.getEstimatedSizeBytes(null));
-  }
-
-  @Test
-  public void testEstimatedSizeOfFilePatternThroughSamplingEqualSize() throws Exception {
-    // When all files are of equal size, we should get the exact size.
-    int numFilesToTest = FileBasedSource.MAX_NUMBER_OF_FILES_FOR_AN_EXACT_STAT * 2;
-    File file0 = null;
-    for (int i = 0; i < numFilesToTest; i++) {
-      List<String> data = createStringDataset(3, 20);
-      File file = createFileWithData("file" + i, data);
-      if (i == 0) {
-        file0 = file;
-      }
-    }
-
-    long actualTotalSize = file0.length() * numFilesToTest;
-    TestFileBasedSource source =
-        new TestFileBasedSource(new File(file0.getParent(), "file*").getPath(), 64, null);
-    assertEquals(actualTotalSize, source.getEstimatedSizeBytes(null));
-  }
-
-  @Test
-  public void testEstimatedSizeOfFilePatternThroughSamplingDifferentSizes() throws Exception {
-    float tolerableError = 0.2f;
-    int numFilesToTest = FileBasedSource.MAX_NUMBER_OF_FILES_FOR_AN_EXACT_STAT * 2;
-    File file0 = null;
-
-    // Keeping sizes of files close to each other to make sure that the test passes reliably.
-    Random rand = new Random(System.currentTimeMillis());
-    int dataSizeBase = 100;
-    int dataSizeDelta = 10;
-
-    long actualTotalSize = 0;
-    for (int i = 0; i < numFilesToTest; i++) {
-      List<String> data = createStringDataset(
-          3, (int) (dataSizeBase + rand.nextFloat() * dataSizeDelta * 2 - dataSizeDelta));
-      File file = createFileWithData("file" + i, data);
-      if (i == 0) {
-        file0 = file;
-      }
-      actualTotalSize += file.length();
-    }
-
-    TestFileBasedSource source =
-        new TestFileBasedSource(new File(file0.getParent(), "file*").getPath(), 64, null);
-    assertEquals((double) actualTotalSize, (double) source.getEstimatedSizeBytes(null),
-        actualTotalSize * tolerableError);
   }
 
   @Test

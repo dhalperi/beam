@@ -18,6 +18,8 @@
 package org.apache.beam.sdk.util;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -32,8 +34,10 @@ import java.io.Writer;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
-import org.hamcrest.Matchers;
+import org.apache.beam.sdk.values.KV;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -47,6 +51,10 @@ public class FileIOChannelFactoryTest {
   @Rule public ExpectedException thrown = ExpectedException.none();
   @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
   private FileIOChannelFactory factory = new FileIOChannelFactory();
+
+  private static KV<String, Long> mkFileSize(File f) {
+    return KV.of(f.getPath(), f.length());
+  }
 
   private void testCreate(Path path) throws Exception {
     String expected = "my test string";
@@ -121,42 +129,48 @@ public class FileIOChannelFactoryTest {
 
   @Test
   public void testMatchExact() throws Exception {
-    List<String> expected = ImmutableList.of(temporaryFolder.newFile("a").toString());
+    File tempFile = temporaryFolder.newFile("a");
     temporaryFolder.newFile("aa");
     temporaryFolder.newFile("ab");
 
-    assertThat(factory.match(temporaryFolder.getRoot().toPath().resolve("a").toString()),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+    Collection<KV<String, Long>> expected =
+        Collections.singletonList(KV.of(tempFile.toString(), 0L));
+    assertThat(
+        factory.match(temporaryFolder.getRoot().toPath().resolve("a").toString()),
+        equalTo(expected));
   }
 
   @Test
   public void testMatchNone() throws Exception {
-    List<String> expected = ImmutableList.of();
     temporaryFolder.newFile("a");
     temporaryFolder.newFile("aa");
     temporaryFolder.newFile("ab");
 
     // Windows doesn't like resolving paths with * in them, so the * is appended after resolve.
-    assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "b") + "*"),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+    assertThat(
+        factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "b") + "*"),
+        empty());
   }
 
   @Test
   public void testMatchUsingExplicitPath() throws Exception {
-    List<String> expected = ImmutableList.of(temporaryFolder.newFile("a").toString());
+    File tempFile = temporaryFolder.newFile("a");
     temporaryFolder.newFile("aa");
 
-    assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a")),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+    Collection<KV<String, Long>> expected =
+        Collections.singletonList(KV.of(tempFile.toString(), 0L));
+    assertThat(
+        factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a")),
+        equalTo(expected));
   }
 
   @Test
   public void testMatchUsingExplicitPathForNonExistentFile() throws Exception {
-    List<String> expected = ImmutableList.of();
     temporaryFolder.newFile("aa");
 
-    assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a")),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+    assertThat(
+        factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a")),
+        empty());
   }
 
   @Test
@@ -164,14 +178,19 @@ public class FileIOChannelFactoryTest {
     File unmatchedSubDir = temporaryFolder.newFolder("aaa");
     File unmatchedSubDirFile = File.createTempFile("sub-dir-file", "", unmatchedSubDir);
     unmatchedSubDirFile.deleteOnExit();
-    List<String> expected = ImmutableList.of(temporaryFolder.newFile("a").toString(),
-        temporaryFolder.newFile("aa").toString(), temporaryFolder.newFile("ab").toString());
+
+
+    List<KV<String, Long>> expected = ImmutableList.of(
+        mkFileSize(temporaryFolder.newFile("a")),
+        mkFileSize(temporaryFolder.newFile("aa")),
+        mkFileSize(temporaryFolder.newFile("ab")));
     temporaryFolder.newFile("ba");
     temporaryFolder.newFile("bb");
 
     // Windows doesn't like resolving paths with * in them, so the * is appended after resolve.
-    assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a") + "*"),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+    assertThat(
+        factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a") + "*"),
+        containsInAnyOrder(expected.toArray(new KV[expected.size()])));
   }
 
   @Test
@@ -183,24 +202,27 @@ public class FileIOChannelFactoryTest {
     File unmatchedSubDirFile = File.createTempFile("sub-dir-file", "", unmatchedSubDir);
     unmatchedSubDirFile.deleteOnExit();
 
-    List<String> expected = ImmutableList.of(matchedSubDirFile.toString(),
-        temporaryFolder.newFile("aa").toString(), temporaryFolder.newFile("ab").toString());
+    List<KV<String, Long>> expected = ImmutableList.of(
+        mkFileSize(matchedSubDirFile),
+        mkFileSize(temporaryFolder.newFile("aa")),
+        mkFileSize(temporaryFolder.newFile("ab")));
     temporaryFolder.newFile("ba");
     temporaryFolder.newFile("bb");
 
     // Windows doesn't like resolving paths with * in them, so the ** is appended after resolve.
-    assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a") + "**"),
-        Matchers.hasItems(expected.toArray(new String[expected.size()])));
+    assertThat(
+        factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a") + "**"),
+        containsInAnyOrder(expected.toArray(new KV[expected.size()])));
   }
 
   @Test
   public void testMatchWithDirectoryFiltersOutDirectory() throws Exception {
-    List<String> expected = ImmutableList.of(temporaryFolder.newFile("a").toString());
+    List<KV<String, Long>> expected = ImmutableList.of(mkFileSize(temporaryFolder.newFile("a")));
     temporaryFolder.newFolder("a_dir_that_should_not_be_matched");
 
     // Windows doesn't like resolving paths with * in them, so the * is appended after resolve.
     assertThat(factory.match(factory.resolve(temporaryFolder.getRoot().getPath(), "a") + "*"),
-        containsInAnyOrder(expected.toArray(new String[expected.size()])));
+        containsInAnyOrder(expected.toArray(new KV[expected.size()])));
   }
 
   @Test

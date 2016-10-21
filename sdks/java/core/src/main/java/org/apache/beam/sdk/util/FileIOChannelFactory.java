@@ -40,6 +40,7 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.regex.Matcher;
+import org.apache.beam.sdk.values.KV;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +69,7 @@ public class FileIOChannelFactory implements IOChannelFactory {
   // This implementation only allows for wildcards in the file name.
   // The directory portion must exist as-is.
   @Override
-  public Collection<String> match(String spec) throws IOException {
+  public Collection<KV<String, Long>> match(String spec) throws IOException {
     File file = specToFile(spec);
 
     File parent = file.getAbsoluteFile().getParentFile();
@@ -99,9 +100,9 @@ public class FileIOChannelFactory implements IOChannelFactory {
               }
         }));
 
-    List<String> result = new LinkedList<>();
+    List<KV<String, Long>> result = new LinkedList<>();
     for (File match : matchedFiles) {
-      result.add(match.getPath());
+      result.add(KV.of(match.getPath(), match.length()));
     }
 
     return result;

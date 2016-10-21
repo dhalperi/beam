@@ -187,11 +187,16 @@ public class GcsUtilTest {
     items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/"));
 
     // Files within the directory
-    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file1name"));
-    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file2name"));
-    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file3name"));
-    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/otherfile"));
-    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/anotherfile"));
+    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file1name")
+        .setSize(BigInteger.ONE));
+    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file2name")
+        .setSize(BigInteger.ONE));
+    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/file3name")
+        .setSize(BigInteger.ONE));
+    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/otherfile")
+        .setSize(BigInteger.ONE));
+    items.add(new StorageObject().setBucket("testbucket").setName("testdirectory/anotherfile")
+        .setSize(BigInteger.ONE));
 
     modelObjects.setItems(items);
 
@@ -200,7 +205,8 @@ public class GcsUtilTest {
         mockStorageGet);
     when(mockStorageObjects.list("testbucket")).thenReturn(mockStorageList);
     when(mockStorageGet.execute()).thenReturn(
-        new StorageObject().setBucket("testbucket").setName("testdirectory/otherfile"));
+        new StorageObject().setBucket("testbucket").setName("testdirectory/otherfile")
+            .setSize(BigInteger.ONE));
     when(mockStorageList.execute()).thenReturn(modelObjects);
 
     // Test a single file.
