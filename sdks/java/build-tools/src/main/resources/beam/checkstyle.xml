@@ -65,7 +65,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
     <property name="checkFormat" value="$1"/>
   </module>
   <module name="SuppressionFilter">
-    <property name="file" value="${checkstyle.suppressions.file}" />
+    <property name="file" value="suppressions.xml" />
   </module>
 
   <!-- Check that every module has a package-info.java -->
