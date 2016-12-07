@@ -17,6 +17,8 @@
  */
 package org.apache.beam.runners.flink.translation;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.beam.runners.flink.translation.types.CoderTypeInformation;
@@ -131,6 +133,12 @@ public class FlinkBatchTranslationContext {
             windowingStrategy.getWindowFn().windowCoder());
 
     return new CoderTypeInformation<>(windowedValueCoder);
+  }
+
+  @SuppressWarnings("unchecked")
+  String getFullName(PTransform<?, ?> transform) {
+    checkArgument(transform == currentTransform.getTransform(), "");
+    return currentTransform.getFullName();
   }
 
   @SuppressWarnings("unchecked")

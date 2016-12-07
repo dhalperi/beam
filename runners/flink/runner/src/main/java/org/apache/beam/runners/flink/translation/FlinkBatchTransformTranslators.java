@@ -126,7 +126,6 @@ class FlinkBatchTransformTranslators {
 
     @Override
     public void translateNode(Read.Bounded<T> transform, FlinkBatchTranslationContext context) {
-      String name = transform.getName();
       BoundedSource<T> source = transform.getSource();
       PCollection<T> output = context.getOutput(transform);
 
@@ -136,7 +135,7 @@ class FlinkBatchTransformTranslators {
           context.getExecutionEnvironment(),
           new SourceInputFormat<>(source, context.getPipelineOptions()),
           typeInformation,
-          name);
+          context.getFullName(transform));
 
       context.setOutputDataSet(output, dataSource);
     }
