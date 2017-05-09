@@ -43,6 +43,8 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.compressors.deflate.DeflateCompressorInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.joda.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Source that reads from compressed files. A {@code CompressedSources} wraps a delegate
@@ -74,6 +76,8 @@ import org.joda.time.Instant;
  */
 @Experimental(Experimental.Kind.SOURCE_SINK)
 public class CompressedSource<T> extends FileBasedSource<T> {
+  private static final Logger LOG = LoggerFactory.getLogger(CompressedSource.class);
+
   /**
    * Factory interface for creating channels that decompress the content of an underlying channel.
    */
@@ -386,14 +390,20 @@ public class CompressedSource<T> extends FileBasedSource<T> {
   @Override
   protected final FileBasedReader<T> createSingleFileReader(PipelineOptions options) {
     if (channelFactory instanceof FileNameBasedDecompressingChannelFactory) {
+      boolean isSplittable = false;
+      try {
+        isSplittable = isSplittable();
+      } catch (Exception e) {
+        // ignore
+        LOG.warn("Error checking whether {} is splittable, assuming it is not.", sourceDelegate);
+      }
       FileNameBasedDecompressingChannelFactory fileNameBasedChannelFactory =
           (FileNameBasedDecompressingChannelFactory) channelFactory;
-      if (!fileNameBasedChannelFactory.isCompressed(getFileOrPatternSpec())) {
+      if (!fileNameBasedChannelFactory.isCompressed(getFileOrPatternSpec()) && isSplittable) {
         return sourceDelegate.createSingleFileReader(options);
       }
     }
-    return new CompressedReader<T>(
-        this, sourceDelegate.createSingleFileReader(options));
+    return new CompressedReader<T>(this, sourceDelegate.createSingleFileReader(options));
   }
 
   @Override
