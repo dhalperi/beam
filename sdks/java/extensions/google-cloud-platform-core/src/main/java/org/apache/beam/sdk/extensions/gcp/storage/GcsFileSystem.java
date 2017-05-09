@@ -236,12 +236,39 @@ class GcsFileSystem extends FileSystem<GcsResourceId> {
     }
   }
 
+  // It is incorrect to set IsReadSeekEfficient true for files with compressed content encodings.
+  // This is because the size information will not accurately represent the truth.
+  //
+  // The following is a list of standardized compressed encodings. See
+  // http://www.iana.org/assignments/http-parameters/http-parameters.xhtml#content-coding
+  //
+  // Among these, GZIP is the most likely offender as GCS explicitly encourages GZIP encoding by
+  // providing the -z and -Z options. See https://cloud.google.com/storage/docs/gsutil/commands/cp
+  private static final List<String> COMPRESSED_ENCODINGS = ImmutableList.of(
+      "brotli", "compress", "x-compress", "deflate", "gzip", "pack200-gzip", "x-gzip");
+
+  // The following is a list of standardized uncompressed encodings. See
+  // http://www.iana.org/assignments/http-parameters/http-parameters.xhtml#content-coding
+  //
+  // Empty encoding and 'identity'.
+  private static final List<String> UNCOMPRESSED_ENCODINGS = ImmutableList.of("", "identity");
+
   private Metadata toMetadata(StorageObject storageObject) {
-    // TODO: Address https://issues.apache.org/jira/browse/BEAM-1494
-    // It is incorrect to set IsReadSeekEfficient true for files with content encoding set to gzip.
-    Metadata.Builder ret = Metadata.builder()
-        .setIsReadSeekEfficient(true)
-        .setResourceId(GcsResourceId.fromGcsPath(GcsPath.fromObject(storageObject)));
+    GcsResourceId resource = GcsResourceId.fromGcsPath(GcsPath.fromObject(storageObject));
+    Metadata.Builder ret = Metadata.builder().setResourceId(resource);
+    String contentEncoding = firstNonNull(storageObject.getContentEncoding(), "");
+    if (UNCOMPRESSED_ENCODINGS.contains(contentEncoding)) {
+      ret.setIsReadSeekEfficient(true);
+    } else if (COMPRESSED_ENCODINGS.contains(contentEncoding)) {
+      ret.setIsReadSeekEfficient(false);
+    } else {
+      ret.setIsReadSeekEfficient(false);
+      LOG.warn(
+          "Unhandled content encoding {} for {}; assuming this file cannot be seeked efficiently.",
+          contentEncoding,
+          resource);
+    }
+
     BigInteger size = firstNonNull(storageObject.getSize(), BigInteger.ZERO);
     ret.setSizeBytes(size.longValue());
     return ret.build();
