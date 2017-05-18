@@ -84,7 +84,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /**
- * Tests for CompressedSource.
+ * Tests for {@link CompressedSource}.
  */
 @RunWith(JUnit4.class)
 public class CompressedSourceTest {
@@ -98,13 +98,16 @@ public class CompressedSourceTest {
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
+  // Arbitrary number of records for a non-empty file, large enough for compression to help.
+  private static final int NON_EMPTY_SIZE = 1000;
+
   /**
    * Test reading nonempty input with gzip.
    */
   @Test
   @Category(NeedsRunner.class)
   public void testReadGzip() throws Exception {
-    byte[] input = generateInput(5000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     runReadTest(input, CompressionMode.GZIP);
   }
 
@@ -176,7 +179,7 @@ public class CompressedSourceTest {
   @Test
   @Category(NeedsRunner.class)
   public void testReadBzip2() throws Exception {
-    byte[] input = generateInput(5000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     runReadTest(input, CompressionMode.BZIP2);
   }
 
@@ -186,7 +189,7 @@ public class CompressedSourceTest {
   @Test
   @Category(NeedsRunner.class)
   public void testReadZip() throws Exception {
-    byte[] input = generateInput(5000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     runReadTest(input, CompressionMode.ZIP);
   }
 
@@ -196,7 +199,7 @@ public class CompressedSourceTest {
   @Test
   @Category(NeedsRunner.class)
   public void testReadDeflate() throws Exception {
-    byte[] input = generateInput(5000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     runReadTest(input, CompressionMode.DEFLATE);
   }
 
@@ -295,23 +298,23 @@ public class CompressedSourceTest {
     String baseName = "test-input";
 
     // Expected data
-    byte[] generated = generateInput(1000);
+    byte[] generated = generateInput(NON_EMPTY_SIZE);
     List<Byte> expected = new ArrayList<>();
 
     // Every sort of compression
     File uncompressedFile = tmpFolder.newFile(baseName + ".bin");
-    generated = generateInput(1000);
+    generated = generateInput(NON_EMPTY_SIZE);
     Files.write(generated, uncompressedFile);
     expected.addAll(Bytes.asList(generated));
 
     File gzipFile = tmpFolder.newFile(baseName + ".gz");
-    generated = generateInput(1000);
+    generated = generateInput(NON_EMPTY_SIZE);
     writeFile(gzipFile, generated, CompressionMode.GZIP);
     expected.addAll(Bytes.asList(generated));
 
     File bzip2File = tmpFolder.newFile(baseName + ".bz2");
-    generated = generateInput(1000);
-    writeFile(bzip2File, generateInput(1000), CompressionMode.BZIP2);
+    generated = generateInput(NON_EMPTY_SIZE);
+    writeFile(bzip2File, generateInput(NON_EMPTY_SIZE), CompressionMode.BZIP2);
     expected.addAll(Bytes.asList(generated));
 
     String filePattern = new File(tmpFolder.getRoot().toString(), baseName + ".*").toString();
@@ -368,7 +371,7 @@ public class CompressedSourceTest {
   @Test
   @Category(NeedsRunner.class)
   public void testFalseGzipStream() throws Exception {
-    byte[] input = generateInput(1000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     File tmpFile = tmpFolder.newFile("test.gz");
     Files.write(input, tmpFile);
     verifyReadContents(input, tmpFile, CompressionMode.GZIP);
@@ -381,7 +384,7 @@ public class CompressedSourceTest {
   @Test
   @Category(NeedsRunner.class)
   public void testFalseBzip2Stream() throws Exception {
-    byte[] input = generateInput(1000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     File tmpFile = tmpFolder.newFile("test.bz2");
     Files.write(input, tmpFile);
     thrown.expectCause(Matchers.allOf(
@@ -429,7 +432,7 @@ public class CompressedSourceTest {
     List<Byte> expected = new ArrayList<>();
 
     for (int i = 0; i < numFiles; i++) {
-      byte[] generated = generateInput(1000);
+      byte[] generated = generateInput(NON_EMPTY_SIZE);
       File tmpFile = tmpFolder.newFile(baseName + i);
       writeFile(tmpFile, generated, CompressionMode.GZIP);
       expected.addAll(Bytes.asList(generated));
@@ -722,7 +725,7 @@ public class CompressedSourceTest {
   public void testUnsplittable() throws IOException {
     String baseName = "test-input";
     File compressedFile = tmpFolder.newFile(baseName + ".gz");
-    byte[] input = generateInput(10000);
+    byte[] input = generateInput(NON_EMPTY_SIZE);
     writeFile(compressedFile, input, CompressionMode.GZIP);
 
     CompressedSource<Byte> source =
