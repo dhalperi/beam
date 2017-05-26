@@ -35,6 +35,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import javax.annotation.Nullable;
+import org.apache.beam.sdk.metrics.Counter;
+import org.apache.beam.sdk.metrics.Metrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,6 +64,13 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
 
   private static class LoggingHttpBackOffIOExceptionHandler
       extends HttpBackOffIOExceptionHandler {
+    private static final Counter RETRIED_REQUESTS =
+        Metrics.counter(
+            LoggingHttpBackOffIOExceptionHandler.class, "Retried requests to Google APIs");
+    private static final Counter FAILED_REQUESTS =
+        Metrics.counter(
+            LoggingHttpBackOffIOExceptionHandler.class, "Failed requests to Google APIs");
+
     public LoggingHttpBackOffIOExceptionHandler(BackOff backOff) {
       super(backOff);
     }
@@ -71,8 +80,10 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         throws IOException {
       boolean willRetry = super.handleIOException(request, supportsRetry);
       if (willRetry) {
+        RETRIED_REQUESTS.inc();
         LOG.debug("Request failed with IOException, will retry: {}", request.getUrl());
       } else {
+        FAILED_REQUESTS.inc();
         LOG.warn("Request failed with IOException, will NOT retry: {}", request.getUrl());
       }
       return willRetry;
